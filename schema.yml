@@ -1,0 +1,7 @@
+# EvalMonkey Schema
+# Currently EvalMonkey does not rely on local databases like Supabase.
+# It uses standard YAML/JSON configurations for Bring-Your-Own (BYO) evaluations.
+# Traces are explicitly handled by the Langfuse endpoint.
+# 
+# Future updates that require persistent local state or tables will be added here.
+eval_monkey_tables: []

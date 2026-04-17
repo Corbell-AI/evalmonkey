@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "evalmonkey-bench"
+version = "0.1.0"
+description = "Continuous Benchmarking and Chaos Engineering Framework for Multi-Step AI Agents"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "Apache-2.0"}
+dependencies = [
+    "typer>=0.9.0",
+    "rich>=13.0.0",
+    "httpx>=0.25.0",
+    "fastapi",
+    "uvicorn",
+    "pyyaml",
+    "pydantic",
+    "litellm",
+    "datasets",
+    "boto3>=1.28.57"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio"
+]
+
+[project.scripts]
+evalmonkey = "scripts.cli:app"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["evalmonkey*", "scripts*", "apps*"]
