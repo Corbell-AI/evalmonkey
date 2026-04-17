@@ -1,9 +1,18 @@
-# EvalMonkey 🐒
+<p align="center">
+  <img src="assets/evalmonkey-logo.png" alt="EvalMonkey Logo" width="400"/>
+</p>
+
+# EvalMonkey
 
 <p align="center">
   <b>Agent Benchmarking & Chaos Engineering Framework</b><br>
   <i>"Don't just trust your agent. Prove it works. Then break it."</i>
 </p>
+
+<p align="center">
+  <video src="assets/eval_monkey_github_video.mp4" controls="controls" style="max-width: 100%;"></video>
+</p>
+
 
 ## Overview
 Agents are fundamentally non-deterministic. They rely on external APIs, tool loops, and massive context windows.
