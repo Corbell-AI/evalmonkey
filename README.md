@@ -9,9 +9,7 @@
   <i>"Don't just trust your agent. Prove it works. Then break it."</i>
 </p>
 
-<p align="center">
-  <video src="assets/eval_monkey_github_video.mp4" controls="controls" style="max-width: 100%;"></video>
-</p>
+https://github.com/Corbell-AI/evalmonkey/raw/main/assets/eval_monkey_github_video.mp4
 
 
 ## Overview
