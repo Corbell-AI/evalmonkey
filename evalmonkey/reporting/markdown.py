@@ -26,7 +26,7 @@ def print_banner():
     console.print("\n")
 
 
-def print_benchmark_score(scenario_name: str, score: int, reasoning: str, baseline_score: int = None):
+def print_benchmark_score(scenario_name: str, score: int, reasoning: str, baseline_score: int | None = None):
     if baseline_score is not None:
         diff = score - baseline_score
         diff_text = f"[bold green]+{diff}[/bold green]" if diff > 0 else (f"[bold red]{diff}[/bold red]" if diff < 0 else "[bold yellow]0[/bold yellow]")
