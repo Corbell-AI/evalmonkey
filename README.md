@@ -195,6 +195,9 @@ You don't need to change a single line of your target agent's code for these tes
 | `client_typo_injection` | Heavily obfuscates spelled words to test your LLM's semantic inference flexibility. |
 | `client_schema_mutation` | Alters incoming JSON schema keys (e.g. `question` -> `query`) to verify robust API strictness handling without crashing. |
 | `client_language_shift` | Radically changes request instructions to attempt safety bypasses. |
+| `client_payload_bloat` | Floods the payload with thousands of characters to natively test token limits and prompt truncation crash safety. |
+| `client_empty_payload` | Sends entirely blank strings to verify graceful rejection handling. |
+| `client_context_truncation` | Maliciously slices the request text exactly in half. |
 
 ```bash
 # Testing a prompt injection against your agent without modifying your code!
@@ -229,7 +232,29 @@ evalmonkey run-chaos --scenario mmlu --sample-agent research_agent --chaos-profi
 ╰──────────────────────────────────────────────────────────╯
 ```
 
-### Experience 4: Historical Production Reliability 
+## 🤖 MCP Server (Cursor & Claude Integration)
+
+EvalMonkey natively ships with a **Model Context Protocol (MCP)** server! This allows AI IDEs (like Cursor) or external agents (like Claude Desktop) to invoke EvalMonkey tools automatically while they build your agent.
+
+### Setting Up in Claude Desktop / Cursor
+Add the following to your MCP configuration file (e.g. `claude_desktop_config.json`):
+
+```json
+{
+  "mcpServers": {
+    "evalmonkey": {
+      "command": "evalmonkey",
+      "args": ["serve-mcp"]
+    }
+  }
+}
+```
+
+Once connected, your AI assistant will gain the ability to list benchmarks, trigger full evaluation runs, inject chaos payload mutators, and pull historical trends entirely autonomously while helping you write your agent!
+
+---
+
+### Experience 4: Historical Production Reliability
 Check your agent's reliability trends over time!
 ```bash
 evalmonkey history --scenario gsm8k

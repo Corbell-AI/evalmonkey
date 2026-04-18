@@ -290,5 +290,14 @@ def history(scenario: str = typer.Option(None, help="Specific scenario ID to vie
         reliability = calculate_production_reliability(scenario=s)
         print_history_trends(s, s_hist, reliability)
 
+@app.command()
+def serve_mcp():
+    """
+    Start the EvalMonkey MCP Server via stdio.
+    This exposes EvalMonkey's commands as native tools for external tools/agents (e.g., Claude Desktop, Cursor).
+    """
+    from evalmonkey.mcp_server import mcp
+    mcp.run(transport="stdio")
+
 if __name__ == "__main__":
     app()
