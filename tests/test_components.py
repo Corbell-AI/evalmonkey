@@ -52,14 +52,14 @@ def test_llm_judge_malformed(mock_litellm):
 async def test_load_generator_success(mock_post):
     mock_response = MagicMock()
     mock_response.status_code = 200
-    mock_response.json.return_value = {"answer": "42"}
+    mock_response.json.return_value = {"data": "42"}
     mock_post.return_value = mock_response
 
     generator = LoadGenerator("http://fake.api/solve")
     res = await generator.run_scenario("gsm8k", {"question": "life?"})
     
     assert res["status"] == "success"
-    assert res["data"] == {"answer": "42"}
+    assert res["data"] == "42"
 
 
 @pytest.mark.asyncio
@@ -89,5 +89,5 @@ def test_cli_list_benchmarks(mock_get_benchmarks):
 def test_cli_no_target_url():
     # If no target URL and no sample agent, it should complain.
     result = runner.invoke(app, ["run-benchmark", "--scenario", "gsm8k"])
-    assert "target-url is required" in result.stdout
+    assert "No agent URL found" in result.stdout
 

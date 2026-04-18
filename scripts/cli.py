@@ -18,9 +18,37 @@ from evalmonkey.reporting.markdown import (
 )
 from evalmonkey.scenarios.standard_benchmarks import load_standard_benchmark, get_supported_benchmarks
 from evalmonkey.reporting.history import record_run, get_history, calculate_production_reliability
+from evalmonkey.config.agent_config import load_config, generate_config_yaml, FRAMEWORK_PRESETS
 
 app = typer.Typer(help="EvalMonkey: Open-source Agent Benchmarking and Chaos Framework")
 console = Console()
+
+@app.command()
+def init(
+    framework: str = typer.Option("custom", help=f"Agent framework preset. Choices: {', '.join(FRAMEWORK_PRESETS.keys())}"),
+    name: str = typer.Option("My Agent", help="Display name for your agent"),
+    port: int = typer.Option(8000, help="Port your agent server is running on"),
+    output: str = typer.Option("evalmonkey.yaml", help="Output config file path")
+):
+    """
+    Generate a pre-filled evalmonkey.yaml config file for your agent.
+    Run this once in your agent's project directory.
+    """
+    if framework not in FRAMEWORK_PRESETS:
+        console.print(f"[bold red]Unknown framework '{framework}'. Choose from: {', '.join(FRAMEWORK_PRESETS.keys())}[/bold red]")
+        raise typer.Exit(1)
+    
+    yaml_content = generate_config_yaml(framework=framework, name=name, port=port)
+    with open(output, "w") as f:
+        f.write(yaml_content)
+    
+    preset = FRAMEWORK_PRESETS[framework]
+    console.print(f"\n[bold green]✅ Generated {output} for {preset['description']}![/bold green]")
+    console.print(f"[bold cyan]=> request_key: '{preset['request_key']}' | response_path: '{preset['response_path']}'[/bold cyan]")
+    console.print("\nNext steps:")
+    console.print("  1. Edit evalmonkey.yaml to set your agent URL and eval_model")
+    console.print("  2. Run: [bold]evalmonkey run-benchmark --scenario mmlu[/bold]")
+    console.print("  3. Run: [bold]evalmonkey run-chaos --scenario mmlu --chaos-profile client_prompt_injection[/bold]\n")
 
 @app.command()
 def list_benchmarks():
@@ -59,22 +87,46 @@ def run_benchmark(
     target_url: str = typer.Option(None, help="Address of the BYO agent API (e.g. http://localhost:8000). Required unless using --sample-agent."),
     sample_agent: str = typer.Option(None, help="Automatically spawn a sample agent in the background (rag_app or research_agent)"),
     eval_file: str = typer.Option("custom_evals.yaml", help="Path to evaluation assets"),
-    limit: int = typer.Option(5, help="Number of samples from the dataset to load and evaluate.")
+    limit: int = typer.Option(5, help="Number of samples from the dataset to load and evaluate."),
+    request_key: str = typer.Option("question", help="JSON key to use for the question in the request body. E.g. 'message', 'prompt', 'input'."),
+    response_path: str = typer.Option("data", help="Dot-notation path to extract the answer from the response. E.g. 'data', 'output.text', 'choices.0.message.content'.")
 ):
     """
     Run the agent against a standard dataset or custom evaluation and record the score.
     """
     print_banner()
     
+    # Auto-load evalmonkey.yaml from CWD — flags override config if both provided
+    cfg = load_config()
+    if cfg and not sample_agent:
+        effective_url = target_url or cfg.url
+        effective_req_key = request_key if request_key != "question" else cfg.request_key
+        effective_resp_path = response_path if response_path != "data" else cfg.response_path
+        if not target_url:
+            console.print(f"[bold green]=> Using agent config from evalmonkey.yaml: {cfg.name} @ {effective_url}[/bold green]")
+    else:
+        effective_url = target_url
+        effective_req_key = request_key
+        effective_resp_path = response_path
+
     agent_process = None
     if sample_agent:
-        agent_process, target_url = _spawn_sample_agent(sample_agent)
+        agent_process, effective_url = _spawn_sample_agent(sample_agent)
         if not agent_process:
             console.print(f"[bold red]Unknown sample agent: {sample_agent}[/bold red]")
             return
+    elif cfg and cfg.agent_command:
+        # Auto-start the user's own agent via the command in evalmonkey.yaml
+        console.print(f"[bold cyan]=> Spawning your agent: {cfg.agent_command}[/bold cyan]")
+        agent_process = subprocess.Popen(
+            cfg.agent_command, shell=True,
+        )
+        wait = cfg.agent_startup_wait
+        console.print(f"[bold cyan]=> Waiting {wait}s for agent to be ready...[/bold cyan]")
+        time.sleep(wait)
 
-    if not target_url:
-        console.print("[bold red]❌ --target-url is required if not using --sample-agent[/bold red]")
+    if not effective_url:
+        console.print("[bold red]❌ No agent URL found. Run 'evalmonkey init' or pass --target-url[/bold red]")
         return
     
     standard_evals = load_standard_benchmark(scenario, limit=limit)
@@ -93,12 +145,12 @@ def run_benchmark(
         evals_to_run = [target_eval]
 
     try:
-        generator = LoadGenerator(target_url)
+        generator = LoadGenerator(effective_url, request_key=effective_req_key, response_path=effective_resp_path)
         judge = LLMJudgeProvider()
         scores = []
         overall_reasoning = ""
         
-        console.print(f"[bold cyan]=> Executing {len(evals_to_run)} payload(s) sequentially against {target_url}...[/bold cyan]")
+        console.print(f"[bold cyan]=> Executing {len(evals_to_run)} payload(s) sequentially against {effective_url}...[/bold cyan]")
         
         for idx, eval_task in enumerate(evals_to_run):
             resp = asyncio.run(generator.run_scenario(scenario, eval_task.input_payload))
@@ -136,21 +188,46 @@ def run_chaos(
     sample_agent: str = typer.Option(None, help="Automatically spawn a sample agent in the background (rag_app or research_agent)"),
     chaos_profile: str = typer.Option(..., help="The X-Chaos-Profile value to inject (e.g. latency_spike, schema_error)"),
     eval_file: str = typer.Option("custom_evals.yaml", help="Path to evaluation assets"),
-    limit: int = typer.Option(5, help="Number of benchmark samples to evaluate in Chaos Mode")
+    limit: int = typer.Option(5, help="Number of benchmark samples to evaluate in Chaos Mode"),
+    request_key: str = typer.Option("question", help="JSON key for the question in the request body."),
+    response_path: str = typer.Option("data", help="Dot-notation path to extract the answer from the response.")
 ):
     """
     Injects a chaos header against an endpoint, recording the degradation of the capability.
     """
     print_banner()
+    
+    # Auto-load evalmonkey.yaml from CWD — flags override config if both provided
+    cfg = load_config()
+    if cfg and not sample_agent:
+        effective_url = target_url or cfg.url
+        effective_req_key = request_key if request_key != "question" else cfg.request_key
+        effective_resp_path = response_path if response_path != "data" else cfg.response_path
+        if not target_url:
+            console.print(f"[bold green]=> Using agent config from evalmonkey.yaml: {cfg.name} @ {effective_url}[/bold green]")
+    else:
+        effective_url = target_url
+        effective_req_key = request_key
+        effective_resp_path = response_path
+
     agent_process = None
     if sample_agent:
-        agent_process, target_url = _spawn_sample_agent(sample_agent)
+        agent_process, effective_url = _spawn_sample_agent(sample_agent)
         if not agent_process:
             console.print(f"[bold red]Unknown sample agent: {sample_agent}[/bold red]")
             return
-            
-    if not target_url:
-        console.print("[bold red]❌ --target-url is required if not using --sample-agent[/bold red]")
+    elif cfg and cfg.agent_command:
+        # Auto-start the user's own agent via the command in evalmonkey.yaml
+        console.print(f"[bold cyan]=> Spawning your agent: {cfg.agent_command}[/bold cyan]")
+        agent_process = subprocess.Popen(
+            cfg.agent_command, shell=True,
+        )
+        wait = cfg.agent_startup_wait
+        console.print(f"[bold cyan]=> Waiting {wait}s for agent to be ready...[/bold cyan]")
+        time.sleep(wait)
+
+    if not effective_url:
+        console.print("[bold red]❌ No agent URL found. Run 'evalmonkey init' or pass --target-url[/bold red]")
         return
 
     console.print(f"[bold red]=> 🔥 INJECTING CHAOS PROFILE: {chaos_profile} 🔥[/bold red]")
@@ -169,7 +246,7 @@ def run_chaos(
         evals_to_run = [target_eval]
 
     try:
-        generator = LoadGenerator(target_url)
+        generator = LoadGenerator(effective_url, request_key=effective_req_key, response_path=effective_resp_path)
         judge = LLMJudgeProvider()
         scores = []
         

@@ -26,14 +26,108 @@ EvalMonkey natively supports evaluating ANY LLM: **AWS Bedrock**, **Azure**, **G
 > **Note on API Keys:** If you have special setups that generate long-lived, static API keys for Bedrock, Azure, or GCP, simply supply them in the `.env`! EvalMonkey seamlessly supports both standard IAM / Service Account credential flows *and* long-term stateless authentication strings.
 
 ## ⚡️ Quick Start
+
 ```bash
 git clone https://github.com/Corbell-AI/evalmonkey
 cd evalmonkey
 pip install -e .
-
-cp .env.example .env
-# Edit .env and supply your desired BYO LLM provider keys (e.g. OPENAI_API_KEY)
 ```
+
+**Step 1 — Run this once inside your agent's project folder:**
+```bash
+cd /your/crewai-project       # wherever your agent lives
+evalmonkey init --framework crewai --name "My Research Crew" --port 8000
+```
+This auto-generates a pre-filled `evalmonkey.yaml` with the correct request/response format for your framework. Supported: `crewai`, `langchain`, `openai`, `bedrock`, `autogen`, `ollama`, `strands`, `custom`.
+
+**Step 2 — Edit the two settings that matter:**
+```yaml
+# evalmonkey.yaml — generated for CrewAI
+agent:
+  name: "My Research Crew"
+  framework: crewai
+  url: http://localhost:8000/chat       # ← where your agent listens
+  request_key: message
+  response_path: reply
+
+  # ← EvalMonkey will start this for you automatically!
+  # It spawns the process, waits for it to turn on, benchmarks, then stops it.
+  agent_command: "python src/agent.py"  # or: uvicorn src.agent:app --port 8000
+  agent_startup_wait: 3                 # seconds to wait after launch
+
+eval_model: "gpt-4o"   # ← the LLM used as benchmark judge
+```
+
+**Step 3 — Run everything. EvalMonkey starts your agent, benchmarks it, then stops it:**
+```bash
+evalmonkey run-benchmark --scenario mmlu
+evalmonkey run-chaos --scenario mmlu --chaos-profile client_prompt_injection
+evalmonkey history --scenario mmlu
+```
+
+> EvalMonkey discovers `evalmonkey.yaml` from the **current working directory** — the same convention used by `pytest`, `promptfoo`, and `docker-compose`. Run all commands from your agent's project folder.
+
+
+## 🤝 Works With Any Agent — No Code Changes Required
+
+EvalMonkey talks to your agent over plain HTTP. As long as your agent is running and has an endpoint URL, you're done. That's it.
+
+```bash
+# Point EvalMonkey at your existing running agent
+evalmonkey run-benchmark --scenario mmlu --target-url http://localhost:8000/chat
+```
+
+**Your agent returns a different JSON format?** Use two flags to map any request/response shape:
+
+| Flag | What it does | Example |
+|---|---|---|
+| `--request-key` | Which key to send the question under | `message`, `prompt`, `input` |
+| `--response-path` | Dot-path to extract the answer from | `output.text`, `choices.0.message.content`, `result` |
+
+```bash
+# CrewAI agent that takes {"message":""} and returns {"reply":""}
+evalmonkey run-benchmark --scenario mmlu \
+  --target-url http://localhost:8000/chat \
+  --request-key message \
+  --response-path reply
+
+# OpenAI-compatible endpoint returning {"choices":[{"message":{"content":""}}]}
+evalmonkey run-benchmark --scenario arc \
+  --target-url http://localhost:8000/v1/chat/completions \
+  --request-key content \
+  --response-path choices.0.message.content
+```
+
+### Supported Frameworks
+
+| Framework | Notes |
+|---|---|
+| 🦜 **LangChain** | Any Chain, LCEL pipe, or AgentExecutor behind FastAPI |
+| 🤖 **CrewAI** | Any Crew behind a `/chat` or custom endpoint |
+| ✨ **OpenAI Agents SDK** | Native OpenAI Chat Completions format supported via `--response-path` |
+| ☁️ **AWS Bedrock / Agent Core** | Any Bedrock endpoint, IAM or long-lived key |
+| 🧩 **Microsoft AutoGen** | Any ConversableAgent behind HTTP |
+| 🦙 **Ollama** | Running locally at `http://localhost:11434` |
+| 🧵 **Strands SDK** | Built-in sample apps included |
+| 🌐 **Any HTTP Agent** | Flask, Express.js, Go — if it accepts POST it works |
+
+<details>
+<summary>📦 Don't have an HTTP endpoint yet? Use our ready-made thin adapters (click to expand)</summary>
+
+Copy the relevant file from `apps/framework_adapters/` next to your agent code, swap in your Crew/Chain/Agent, and run it. No changes needed to EvalMonkey.
+
+- `langchain_adapter.py` — wraps any LangChain chain  
+- `crewai_adapter.py` — wraps any CrewAI Crew  
+- `openai_agents_adapter.py` — wraps OpenAI Agents SDK  
+- `bedrock_agentcore_adapter.py` — wraps AWS Bedrock Converse API  
+- `autogen_adapter.py` — wraps Microsoft AutoGen Crew  
+
+Each adapter is ~40 lines and exposes a `/solve` endpoint on `localhost`.
+
+</details>
+
+---
+
 
 ## 🌍 Supported Standard Benchmarks
 EvalMonkey natively supports **10** off-the-shelf benchmark datasets pulled directly from HuggingFace. List them anytime via the CLI:
