@@ -147,6 +147,47 @@ evalmonkey list-benchmarks
 | `truthfulqa` | TruthfulQA: Tests whether an agent mimics human falsehoods or hallucination. |
 | `hella-swag` | HellaSwag: Commonsense natural language inferences. |
 
+<details>
+<summary>🛠️ Build Your Own Custom Benchmarks (click to expand)</summary>
+
+Yes, people absolutely bring their own datasets! The most powerful way to test an agent is to grab 10-50 real questions from your production logs, dump them into a CSV, and evaluate your agent against them.
+
+EvalMonkey natively supports auto-parsing **`.yaml`**, **`.json`**, and **`.csv`** files! 
+
+You don't need any complex ETL pipelines. Just drop a file (e.g. `evals.csv`, `evals.json`, or `custom_evals.yaml`) in your execution directory and pass it to EvalMonkey!
+
+### 1. CSV Example (`evals.csv`)
+If using a CSV, just make sure you have the columns `id` and `expected_behavior_rubric`. **Any other column** you add (like `question`, `topic`, `image_url`) will be automatically gathered and sent in the JSON payload directly to your agent!
+
+| id | expected_behavior_rubric | question |
+|---|---|---|
+| get_benefits | Must return the URL linking to the company hr portal | Where do I sign up for medical benefits? |
+| time_off | Provide the exact number of standard vacation days (15) | How many days of PTO do I get? |
+
+```bash
+evalmonkey run-benchmark --scenario get_benefits --eval-file evals.csv
+```
+
+### 2. JSON / YAML Example (`evals.json`)
+If you use JSON or YAML, you must nest the agent payload keys explicitly under an `input_payload` dict object:
+```json
+[
+  {
+    "id": "onboarding_query",
+    "description": "Test HR agent's ability to return the onboarding link.",
+    "expected_behavior_rubric": "Must contain exactly the URL https://hr.example.com/benefits",
+    "input_payload": {
+      "question": "Where do I sign up for benefits?"
+    }
+  }
+]
+```
+
+```bash
+evalmonkey run-benchmark --scenario onboarding_query --eval-file evals.json
+```
+</details>
+
 ---
 
 ## 🛠️ Experiences 
@@ -200,8 +241,11 @@ You don't need to change a single line of your target agent's code for these tes
 | `client_context_truncation` | Maliciously slices the request text exactly in half. |
 
 ```bash
-# Testing a prompt injection against your agent without modifying your code!
-evalmonkey run-chaos --scenario arc --target-url http://localhost:8000/api --chaos-profile client_prompt_injection
+# Testing a single prompt injection against your agent without modifying your code!
+evalmonkey run-chaos --scenario arc --chaos-profile client_prompt_injection
+
+# 🌪️ INJECT ALL 7 CLIENT MUTATIONS SEQUENTIALLY
+evalmonkey run-chaos-suite --scenario gsm8k --limit 3
 ```
 
 #### Class B: Agent-Side Injections (Middleware Catch Required)

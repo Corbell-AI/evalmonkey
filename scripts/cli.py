@@ -291,6 +291,72 @@ def history(scenario: str = typer.Option(None, help="Specific scenario ID to vie
         print_history_trends(s, s_hist, reliability)
 
 @app.command()
+def run_chaos_suite(
+    scenario: str = typer.Option(..., help="Scenario ID to test all chaos profiles against"),
+    target_url: str = typer.Option(None, help="Address of the BYO agent API"),
+    sample_agent: str = typer.Option(None, help="Automatically spawn a sample agent in the background"),
+    eval_file: str = typer.Option("custom_evals.yaml", help="Path to evaluation assets"),
+    limit: int = typer.Option(5, help="Number of benchmark samples to evaluate per chaos step"),
+    request_key: str = typer.Option("question", help="JSON key for the question in the request body."),
+    response_path: str = typer.Option("data", help="Dot-notation path to extract the answer from the response.")
+):
+    """
+    Barrage an endpoint with EVERY available client-side chaos profile sequentially.
+    """
+    PROFILES = [
+        "client_prompt_injection", "client_typo_injection", "client_schema_mutation",
+        "client_language_shift", "client_payload_bloat", "client_empty_payload", "client_context_truncation"
+    ]
+    console.print("[bold cyan]=> 🌪️ STARTING FULL CHAOS BARRAGE SUITE 🌪️[/bold cyan]")
+    
+    cfg = load_config()
+    effective_url = target_url or (cfg.url if cfg else None)
+    effective_req_key = request_key if request_key != "question" else (cfg.request_key if cfg else request_key)
+    effective_resp_path = response_path if response_path != "data" else (cfg.response_path if cfg else response_path)
+
+    agent_process = None
+    if sample_agent:
+        agent_process, effective_url = _spawn_sample_agent(sample_agent)
+    elif cfg and cfg.agent_command:
+        console.print(f"[bold cyan]=> Spawning your agent: {cfg.agent_command}[/bold cyan]")
+        agent_process = subprocess.Popen(cfg.agent_command, shell=True)
+        time.sleep(cfg.agent_startup_wait)
+
+    if not effective_url:
+        console.print("[bold red]❌ No agent URL found. Run 'evalmonkey init' or pass --target-url[/bold red]")
+        if agent_process: agent_process.terminate()
+        return
+
+    standard_evals = load_standard_benchmark(scenario, limit=limit)
+    evals_to_run = standard_evals if standard_evals else [e for e in load_local_evals(eval_file) if e.id == scenario]
+    
+    if not evals_to_run:
+        console.print(f"[bold red]Scenario {scenario} not found.[/bold red]")
+        if agent_process: agent_process.terminate()
+        return
+
+    try:
+        generator = LoadGenerator(effective_url, request_key=effective_req_key, response_path=effective_resp_path)
+        judge = LLMJudgeProvider()
+        
+        for profile in PROFILES:
+            scores = []
+            console.print(f"[bold yellow]\n=> Injecting: {profile}[/bold yellow]")
+            for eval_task in evals_to_run:
+                resp = asyncio.run(generator.run_scenario(scenario, eval_task.input_payload, chaos_profile=profile))
+                agent_output_text = str(resp.get("data", resp.get("error_message", "No output")))
+                evaluation = judge.score_run(eval_task.expected_behavior_rubric, agent_output_text)
+                scores.append(evaluation.get("score", 0))    
+            if scores:
+                final_score = int(sum(scores) / len(scores))
+                console.print(f"[bold red]   Score: {final_score}/100[/bold red]")
+                record_run(scenario, "chaos", final_score, details={"chaos_profile": profile, "sample_size": len(scores)})
+    finally:
+        if agent_process:
+            agent_process.terminate()
+    console.print("\n[bold green]=> Barrage Complete! Run `evalmonkey history --scenario <id>` to see all entries.[/bold green]")
+
+@app.command()
 def serve_mcp():
     """
     Start the EvalMonkey MCP Server via stdio.
