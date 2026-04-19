@@ -22,8 +22,26 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e .[dev]
-        pip install httpx mcp pytest pytest-asyncio
+        
+        # Retry logic for pip install to handle intermittent SSL/networking errors
+        function retry_pip() {
+          local n=1 max=5 delay=5
+          while true; do
+            "$@" && break || {
+              if [[ $n -lt $max ]]; then
+                ((n++))
+                echo "Pip failed. Attempt $n/$max:"
+                sleep $delay
+              else
+                echo "Pip command failed after $n attempts."
+                return 1
+              fi
+            }
+          done
+        }
+
+        retry_pip pip install --default-timeout=100 -e .[dev]
+        retry_pip pip install --default-timeout=100 httpx mcp pytest pytest-asyncio
         
     - name: Run pytest
       run: |
