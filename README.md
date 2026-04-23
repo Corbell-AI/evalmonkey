@@ -25,6 +25,11 @@ EvalMonkey natively supports evaluating ANY LLM: **AWS Bedrock**, **Azure**, **G
 
 > **Note on API Keys:** If you have special setups that generate long-lived, static API keys for Bedrock, Azure, or GCP, simply supply them in the `.env`! EvalMonkey seamlessly supports both standard IAM / Service Account credential flows *and* long-term stateless authentication strings.
 
+## 🚀 At a Glance
+- **8 Agent Frameworks natively supported**: CrewAI, LangChain, OpenAI Agents, Microsoft AutoGen, AWS Bedrock, Ollama, Strands, and custom HTTP endpoints.
+- **20 Standard Benchmarks out-of-the-box**: GSM8K, BIG-Bench Hard, HotpotQA, ToxiGen, MT-Bench, MBPP, and more — all categorised by the agent type they target.
+- **18 Chaos Injections ready to run**: Client-side payload mutations, Unicode floods, role impersonation, hostile sentiment, and server-side context overflows — all text-based, no GPU or vision dependencies.
+
 ## ⚡️ Quick Start
 
 ```bash
@@ -130,22 +135,33 @@ Each adapter is ~40 lines and exposes a `/solve` endpoint on `localhost`.
 
 
 ## 🌍 Supported Standard Benchmarks
-EvalMonkey natively supports **10** off-the-shelf benchmark datasets pulled directly from HuggingFace. List them anytime via the CLI:
+EvalMonkey natively supports **20** off-the-shelf benchmark datasets pulled directly from HuggingFace. All benchmarks are **text-only** — no vision, audio, or multimodal agent required. List them anytime via the CLI:
 ```bash
 evalmonkey list-benchmarks
 ```
-| Scenario ID | Description |
-|---|---|
-| `gsm8k` | Grade School Math word problems focusing on multi-step reasoning capabilities. |
-| `xlam` | XLAM Function Calling 60k: Tests agent tool execution logic and parameter structuring. |
-| `swe-bench` | SWE-Bench: Resolving real-world GitHub issues for coding agents. |
-| `gaia-benchmark` | GAIA: General AI Assistants testing on real-world web/tool multi-step tasks. |
-| `webarena` | WebArena: Highly interactive computer usage and browser manipulation. |
-| `human-eval` | HumanEval: Fundamental Python code generation from docstrings. |
-| `mmlu` | Massive Multitask Language Understanding: Broad generalized knowledge across 57 subjects. |
-| `arc` | AI2 Reasoning Challenge: Complex grade-school science questions. |
-| `truthfulqa` | TruthfulQA: Tests whether an agent mimics human falsehoods or hallucination. |
-| `hella-swag` | HellaSwag: Commonsense natural language inferences. |
+
+| Scenario ID | Agent Category | Description |
+|---|---|---|
+| `gsm8k` | 🧠 Reasoning | Grade School Math word problems — multi-step arithmetic & logic. |
+| `xlam` | 🔧 Tool Use | XLAM Function Calling 60k — tool execution & parameter structuring. |
+| `swe-bench` | 💻 Coding | SWE-Bench — resolve real-world GitHub issues from a description only. |
+| `gaia-benchmark` | 🔍 Research | GAIA — multi-step real-world tasks requiring web/tool chaining. |
+| `webarena` | 🔍 Research | WebArena — complex browser & computer usage scenarios (stubbed). |
+| `human-eval` | 💻 Coding | HumanEval — Python function synthesis from docstrings. |
+| `mmlu` | 💬 Q&A | MMLU — general knowledge across 57 academic subjects. |
+| `arc` | 🧠 Reasoning | ARC Challenge — hard grade-school science multiple-choice. |
+| `truthfulqa` | 🛡️ Safety | TruthfulQA — detects hallucination and human-like falsehood mimicry. |
+| `hella-swag` | 🧠 Reasoning | HellaSwag — commonsense sentence-completion inference. |
+| `bbh` | 🧠 Reasoning | BIG-Bench Hard — 23 tasks where LLMs still fall below human baselines. |
+| `winogrande` | 💬 Q&A | WinoGrande — pronoun disambiguation resistant to dataset shortcuts. |
+| `drop` | 🔍 Research | DROP — reading comprehension with embedded numerical & date math. |
+| `natural-questions` | 💬 Q&A | Natural Questions — real Google search queries with Wikipedia answers. |
+| `hotpotqa` | 🔍 Research | HotpotQA — multi-hop reasoning across two Wikipedia documents. |
+| `mbpp` | 💻 Coding | MBPP — entry-level Python function synthesis from plain English. |
+| `apps` | 💻 Coding | APPS — competitive-programming & interview-style code challenges. |
+| `mt-bench` | 📋 Instruction Following | MT-Bench — multi-turn dialogues across writing, roleplay, reasoning, STEM. |
+| `alpacaeval` | 📋 Instruction Following | AlpacaEval — instruction quality judged by GPT-4 head-to-head. |
+| `toxigen` | 🛡️ Safety | ToxiGen — detects toxic/hateful content generation across 13 demographic groups. |
 
 <details>
 <summary>🛠️ Build Your Own Custom Benchmarks (click to expand)</summary>
@@ -234,17 +250,25 @@ You don't need to change a single line of your target agent's code for these tes
 | --- | --- |
 | `client_prompt_injection` | Appends adversarial "IGNORE PREVIOUS INSTRUCTIONS" jailbreaks to test system-message robustness. |
 | `client_typo_injection` | Heavily obfuscates spelled words to test your LLM's semantic inference flexibility. |
-| `client_schema_mutation` | Alters incoming JSON schema keys (e.g. `question` -> `query`) to verify robust API strictness handling without crashing. |
+| `client_schema_mutation` | Alters incoming JSON schema keys (e.g. `question` → `query`) to verify robust API strictness handling without crashing. |
 | `client_language_shift` | Radically changes request instructions to attempt safety bypasses. |
 | `client_payload_bloat` | Floods the payload with thousands of characters to natively test token limits and prompt truncation crash safety. |
 | `client_empty_payload` | Sends entirely blank strings to verify graceful rejection handling. |
-| `client_context_truncation` | Maliciously slices the request text exactly in half. |
+| `client_context_truncation` | Maliciously slices the request text exactly in half to simulate incomplete streaming. |
+| `client_unicode_flood` | Injects invisible Unicode control characters and zero-width joiners between every character — a real-world tokeniser confusion attack. |
+| `client_role_impersonation` | Prepends a fake `[SYSTEM OVERRIDE]` instruction to the user turn — tests whether system-prompt guardrails can be bypassed via user messages. |
+| `client_repetition_loop` | Repeats the payload 50× to simulate a stuck retry loop — exercises token budget limits and rate-limit handling. |
+| `client_negative_sentiment` | Wraps the request in angry, hostile emotional framing — tests agent professionalism under the abusive customer support scenario. |
+| `client_length_constraint_violation` | Appends a conflicting "respond in exactly 2 words" constraint to a complex task — simulates contradictory user instructions common in chatbots. |
 
 ```bash
 # Testing a single prompt injection against your agent without modifying your code!
 evalmonkey run-chaos --scenario arc --chaos-profile client_prompt_injection
 
-# 🌪️ INJECT ALL 7 CLIENT MUTATIONS SEQUENTIALLY
+# Unicode tokeniser attack
+evalmonkey run-chaos --scenario mmlu --chaos-profile client_unicode_flood
+
+# 🌪️ INJECT ALL 12 CLIENT MUTATIONS SEQUENTIALLY
 evalmonkey run-chaos-suite --scenario gsm8k --limit 3
 ```
 
