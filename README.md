@@ -28,7 +28,7 @@ EvalMonkey natively supports evaluating ANY LLM: **AWS Bedrock**, **Azure**, **G
 ## 🚀 At a Glance
 - **8 Agent Frameworks natively supported**: CrewAI, LangChain, OpenAI Agents, Microsoft AutoGen, AWS Bedrock, Ollama, Strands, and custom HTTP endpoints.
 - **20 Standard Benchmarks out-of-the-box**: GSM8K, BIG-Bench Hard, HotpotQA, ToxiGen, MT-Bench, MBPP, and more — all categorised by the agent type they target.
-- **18 Chaos Injections ready to run**: Client-side payload mutations, Unicode floods, role impersonation, hostile sentiment, and server-side context overflows — all text-based, no GPU or vision dependencies.
+- **23 Chaos Injections ready to run**: 12 client-side payload mutations + 11 server-side middleware injections — all text-based, no GPU or vision dependencies.
 
 ## ⚡️ Quick Start
 
@@ -273,18 +273,39 @@ evalmonkey run-chaos-suite --scenario gsm8k --limit 3
 ```
 
 #### Class B: Agent-Side Injections (Middleware Catch Required)
-To deeply verify context truncation, multi-step LLM hallucination recovery, and tool back-offs, EvalMonkey attaches the `X-Chaos-Profile` header over HTTP. You write 3 lines of logic in your FastAPI/Flask proxy to trigger the exact system breakage! (See our Sample Apps for reference!)
-| Profile | Description |
+To deeply verify context truncation, multi-step LLM hallucination recovery, and tool back-offs, EvalMonkey attaches the `X-Chaos-Profile` header over HTTP. You add ~3 lines of logic to your FastAPI/Flask middleware to trigger each breakage. See `apps/rag_app/app.py` for a complete reference implementation.
+
+| Profile | What it tests |
 | --- | --- |
-| `schema_error` | Simulates internal tools crashing and returning completely malformed strings mid-generation. |
-| `latency_spike` | Simulates violent HTTP lag, letting you verify recursive timeouts. |
-| `rate_limit_429` | Simulates your core LLM provider suddenly hitting API Request Limits mid-workflow. |
-| `context_overflow` | Safely floods context sizes natively to test intelligent prompt truncation. |
-| `hallucinated_tool` | Maliciously injects fake data into tool memory to test your agent's logic verification steps. |
-| `empty_response` | Completely drops state parameters abruptly. |
+| `schema_error` | Internal tool returns a malformed/corrupt string instead of valid JSON — tests your agent's output parsing resilience. |
+| `latency_spike` | Agent sleeps 5 s before responding — verifies callers implement request timeouts and don't block forever. |
+| `rate_limit_429` | Returns HTTP 429 to simulate LLM provider quota exhaustion mid-workflow — tests exponential back-off & retry logic. |
+| `context_overflow` | Floods the prompt with 120 k repetitions — tests intelligent truncation before token-limit crashes. |
+| `hallucinated_tool` | Injects fabricated data into the tool result — tests whether your agent validates / cross-checks tool output. |
+| `empty_response` | Drops the response body entirely — tests graceful null-handling rather than silent failures. |
+| `timeout_no_response` | Agent hangs for 120 s — validates that clients enforce read-timeouts and surface a proper error to the user. |
+| `model_downgrade` | Silently swaps the configured model for the weakest available fallback — tests whether answer quality degradation is detected. |
+| `memory_amnesia` | Replaces the incoming message with a blank-slate notice — simulates session/Redis failure wiping conversation state. |
+| `partial_response_truncation` | Returns only the first 20 characters of the answer — mimics an ALB/nginx proxy timeout cutting off long streaming responses mid-transmission. |
+| `cascading_tool_failure` | Returns a structured tool-error response after the LLM call — simulates a downstream vector DB or search API crashing mid-chain and tests graceful degradation. |
+
+**3-line middleware snippet (FastAPI):**
+```python
+chaos_profile = request.headers.get("X-Chaos-Profile")
+if chaos_profile == "partial_response_truncation":
+    return {"status": "success", "data": agent_answer[:20]}
+elif chaos_profile == "cascading_tool_failure":
+    return {"status": "tool_error", "error_message": "VectorDB connection refused", "data": None}
+```
 
 ```bash
-# Testing a server-side framework context overflow!
+# Test proxy-timeout truncation on a research agent
+evalmonkey run-chaos --scenario hotpotqa --sample-agent research_agent --chaos-profile partial_response_truncation
+
+# Validate model-quality degradation detection
+evalmonkey run-chaos --scenario mmlu --sample-agent rag_app --chaos-profile model_downgrade
+
+# Classic server-side context overflow
 evalmonkey run-chaos --scenario mmlu --sample-agent research_agent --chaos-profile context_overflow
 ```
 **Metrics Output:**

@@ -180,3 +180,79 @@ async def test_chaos_length_constraint_violation(mock_post):
     gen = LoadGenerator("http://fake/solve")
     res = await gen.run_scenario("t5", {"question": "Explain quantum entanglement."}, chaos_profile="client_length_constraint_violation")
     assert res["status"] == "success"
+
+
+# ----------- TEST NEW SERVER-SIDE CHAOS PROFILES (rag_app handler) -----------
+
+@pytest.mark.asyncio
+@patch("apps.rag_app.app.call_llm")
+async def test_server_partial_response_truncation(mock_llm):
+    from httpx import AsyncClient, ASGITransport
+    mock_llm.return_value = MagicMock(choices=[MagicMock(message=MagicMock(content="A" * 100))])
+    from apps.rag_app.app import app as rag_app
+    async with AsyncClient(transport=ASGITransport(app=rag_app), base_url="http://test") as client:
+        resp = await client.post("/solve", json={"question": "hi"}, headers={"X-Chaos-Profile": "partial_response_truncation"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "success"
+    assert len(data["data"]) <= 20
+
+
+@pytest.mark.asyncio
+@patch("apps.rag_app.app.call_llm")
+async def test_server_cascading_tool_failure(mock_llm):
+    from httpx import AsyncClient, ASGITransport
+    mock_llm.return_value = MagicMock(choices=[MagicMock(message=MagicMock(content="some answer"))])
+    from apps.rag_app.app import app as rag_app
+    async with AsyncClient(transport=ASGITransport(app=rag_app), base_url="http://test") as client:
+        resp = await client.post("/solve", json={"question": "hi"}, headers={"X-Chaos-Profile": "cascading_tool_failure"})
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "tool_error"
+    assert "error_message" in data
+
+
+@pytest.mark.asyncio
+@patch("apps.rag_app.app.asyncio.sleep")
+async def test_server_timeout_no_response_sleeps(mock_sleep):
+    """timeout_no_response should trigger a 120-second sleep on the server side.
+    ASGITransport is in-process, so we verify via mock rather than real clock."""
+    from httpx import AsyncClient, ASGITransport
+    from apps.rag_app.app import app as rag_app
+    async with AsyncClient(transport=ASGITransport(app=rag_app), base_url="http://test") as client:
+        await client.post("/solve", json={"question": "hi"}, headers={"X-Chaos-Profile": "timeout_no_response"})
+    mock_sleep.assert_called_once_with(120)
+
+
+@pytest.mark.asyncio
+@patch("apps.rag_app.app.call_llm")
+async def test_server_memory_amnesia_clears_question(mock_llm):
+    from httpx import AsyncClient, ASGITransport
+    mock_llm.return_value = MagicMock(choices=[MagicMock(message=MagicMock(content="reply"))])
+    from apps.rag_app.app import app as rag_app
+    async with AsyncClient(transport=ASGITransport(app=rag_app), base_url="http://test") as client:
+        resp = await client.post(
+            "/solve",
+            json={"question": "what did I say earlier?"},
+            headers={"X-Chaos-Profile": "memory_amnesia"},
+        )
+    assert resp.status_code == 200
+    assert resp.json()["status"] == "success"
+    # Verify blank-slate string was sent to LLM
+    user_msg = mock_llm.call_args[1]["messages"][-1]["content"]
+    assert "MEMORY CLEARED" in user_msg
+
+
+@pytest.mark.asyncio
+@patch("apps.rag_app.app.call_llm")
+async def test_server_model_downgrade_swaps_env(mock_llm):
+    import os
+    from httpx import AsyncClient, ASGITransport
+    mock_llm.return_value = MagicMock(choices=[MagicMock(message=MagicMock(content="downgraded reply"))])
+    os.environ["EVAL_MODEL"] = "gpt-4o"
+    from apps.rag_app.app import app as rag_app
+    async with AsyncClient(transport=ASGITransport(app=rag_app), base_url="http://test") as client:
+        resp = await client.post("/solve", json={"question": "test"}, headers={"X-Chaos-Profile": "model_downgrade"})
+    assert resp.status_code == 200
+    assert os.environ.get("EVAL_MODEL") == "gpt-3.5-turbo"
+    os.environ["EVAL_MODEL"] = "gpt-4o"  # restore
