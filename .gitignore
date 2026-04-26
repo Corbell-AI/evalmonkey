@@ -37,7 +37,9 @@ env/
 # Local configuration
 .env
 
-# Evalmonkey specific
+# EvalMonkey specific
 history.json
 *.log
 demo_run.sh
+demo_rag_app.sh
+output/

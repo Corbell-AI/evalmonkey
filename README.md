@@ -19,7 +19,8 @@ Agents are fundamentally non-deterministic. They rely on external APIs, tool loo
 **EvalMonkey** is the ultimate, strictly local, open-source execution harness that enables developers to:
 1. 🎯 **Benchmark Capabilities**: Run standard Agent benchmark datasets against your agent endpoints natively!
 2. 🔥 **Inject Chaos**: Mutate headers, spike latency, and corrupt schemas dynamically to prove true resilience.
-3. 📈 **Track Production Reliability**: Locally store all scores to visualize a single Production Reliability metric that aggregates capability plus chaos-resilience over time!
+3. 📈 **Track Production Reliability**: Locally store all scores to visualize a single Production Reliability metric over time!
+4. 🛠 **Generate Improvement Evals**: When scores are poor, automatically synthesise targeted test cases using your LLM — then hand them to Claude Code or Cursor to fix your agent.
 
 EvalMonkey natively supports evaluating ANY LLM: **AWS Bedrock**, **Azure**, **GCP**, **OpenAI**, and **Ollama**.
 
@@ -29,6 +30,7 @@ EvalMonkey natively supports evaluating ANY LLM: **AWS Bedrock**, **Azure**, **G
 - **8 Agent Frameworks natively supported**: CrewAI, LangChain, OpenAI Agents, Microsoft AutoGen, AWS Bedrock, Ollama, Strands, and custom HTTP endpoints.
 - **20 Standard Benchmarks out-of-the-box**: GSM8K, BIG-Bench Hard, HotpotQA, ToxiGen, MT-Bench, MBPP, and more — all categorised by the agent type they target.
 - **23 Chaos Injections ready to run**: 12 client-side payload mutations + 11 server-side middleware injections — all text-based, no GPU or vision dependencies.
+- **Automatic Eval Asset Generation**: Poor benchmark scores automatically produce `traces.json`, `evals.json`, and `improvement_prompt.md` — one `cat` command away from Claude Code or Cursor.
 
 ## ⚡️ Quick Start
 
@@ -339,7 +341,95 @@ Add the following to your MCP configuration file (e.g. `claude_desktop_config.js
 }
 ```
 
-Once connected, your AI assistant will gain the ability to list benchmarks, trigger full evaluation runs, inject chaos payload mutators, and pull historical trends entirely autonomously while helping you write your agent!
+Once connected, your AI assistant will gain the ability to list benchmarks, trigger full evaluation runs, inject chaos payload mutators, pull historical trends, and generate improvement eval assets — entirely autonomously while helping you build your agent!
+
+### Available MCP Tools
+
+| Tool | What it does |
+|---|---|
+| `run_benchmark` | Run a standard benchmark against any HTTP agent URL |
+| `run_chaos` | Run a benchmark with a specific chaos profile injected |
+| `get_benchmark_history` | Return chronological score history for a scenario |
+| `generate_improvement_evals` | Run a benchmark, capture failures, synthesise targeted test cases, save to `output/` |
+| `get_eval_assets` | Read saved `traces.json` / `evals.json` / `improvement_prompt.md` directly into context |
+| `run_full_pipeline` | **One-shot**: baseline + chaos + eval generation + optional Langfuse export |
+
+**Example Claude Code / Cursor session:**
+```
+# Ask Claude Code to run the full loop:
+"Run the full EvalMonkey pipeline on my agent at http://localhost:8000/solve
+ using the gsm8k scenario with prompt injection and payload bloat chaos tests.
+ Then read the improvement prompt and fix my agent."
+
+# Claude Code will call:
+# 1. run_full_pipeline(scenario="gsm8k", target_url="...", chaos_profiles="client_prompt_injection,client_payload_bloat")
+# 2. get_eval_assets(output_dir="output/gsm8k_...")  ← reads the improvement brief
+# 3. Edits your agent code to fix the failures
+# 4. run_benchmark(...)  ← verifies the fix
+```
+
+---
+
+### Experience 5: Automatic Improvement Eval Generation
+When a benchmark scores poorly (< 70/100 by default), EvalMonkey automatically:
+1. Saves all failing traces to `output/<scenario>_<ts>/traces.json`
+2. Asks the judge LLM to synthesise targeted improvement test cases → `evals.json`
+3. Generates a ready-to-paste coding-agent prompt → `improvement_prompt.md`
+
+```bash
+# After a failing benchmark run, EvalMonkey prints:
+#   ⚠️  3 sample(s) scored below threshold — eval assets saved.
+#   Output → output/gsm8k_20260425_212530/
+#   🛠  Next steps to improve your agent:
+#     1. Regenerate evals anytime:
+#        evalmonkey generate-evals --traces-file output/gsm8k_.../traces.json
+#     2. Pass improvement brief to your coding agent:
+#        cat output/gsm8k_.../improvement_prompt.md | pbcopy
+#     3. Re-run after fixing:
+#        evalmonkey run-benchmark --scenario gsm8k
+
+# Re-generate evals from saved traces (without re-running the benchmark):
+evalmonkey generate-evals --traces-file output/gsm8k_20260425_212530/traces.json
+
+# Push evals to Langfuse for team sharing:
+evalmonkey generate-evals \
+  --traces-file output/gsm8k_20260425_212530/traces.json \
+  --langfuse-dataset my_agent_failures
+```
+
+> **Langfuse is optional.** EvalMonkey works completely without it. Only configure
+> `LANGFUSE_PUBLIC_KEY` + `LANGFUSE_SECRET_KEY` in `.env` if you want to push
+> generated evals to a Langfuse dataset for cloud storage or LLM-as-judge workflows.
+
+---
+
+### Experience 6: One-Command End-to-End Demo (RAG App)
+Run the full benchmark + chaos + eval-generation pipeline against the built-in `rag_app` sample agent:
+
+```bash
+# First time setup:
+cp .env.example .env   # fill in EVAL_MODEL + your LLM provider key
+pip install -e .
+
+# Run everything:
+./demo_rag_app.sh
+```
+
+The script will:
+1. 🚀 Start `rag_app` in the background
+2. 📊 Run 3 baseline benchmarks (`gsm8k`, `mmlu`, `arc`)
+3. 🔥 Run 5 chaos profiles
+4. 🛠 Merge all failing traces → generate `output/demo_<ts>/evals.json` + `improvement_prompt.md`
+5. 💡 Print the exact `cat` command to paste into Claude Code or Cursor
+6. 📈 Show your historical Production Reliability trend
+
+**Output directory structure:**
+```
+output/demo_20260425_212530/
+  traces.json           ← all failing traces (input, output, score, reasoning)
+  evals.json            ← LLM-synthesised targeted test cases (Langfuse-compatible)
+  improvement_prompt.md ← paste into Claude Code / Cursor to auto-fix your agent
+```
 
 ---
 

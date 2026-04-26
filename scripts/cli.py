@@ -10,6 +10,7 @@ from rich import box
 from evalmonkey.simulator.load_gen import LoadGenerator
 from evalmonkey.evals.local_assets import load_local_evals
 from evalmonkey.evals.runner import LLMJudgeProvider
+from evalmonkey.evals.asset_generator import EvalAssetGenerator, FailingTrace, build_output_dir
 from evalmonkey.reporting.markdown import (
     print_banner, 
     print_benchmark_score, 
@@ -147,6 +148,7 @@ def run_benchmark(
     try:
         generator = LoadGenerator(effective_url, request_key=effective_req_key, response_path=effective_resp_path)
         judge = LLMJudgeProvider()
+        asset_gen = EvalAssetGenerator()
         scores = []
         overall_reasoning = ""
         
@@ -160,9 +162,22 @@ def run_benchmark(
                 
             agent_output_text = str(resp.get("data", "No output returned"))
             evaluation = judge.score_run(eval_task.expected_behavior_rubric, agent_output_text)
-            scores.append(evaluation.get("score", 0))
+            score = evaluation.get("score", 0)
+            reasoning = evaluation.get("reasoning", "No reasoning provided.")
+            scores.append(score)
             if idx == 0:
-                overall_reasoning = evaluation.get("reasoning", "No reasoning provided.")
+                overall_reasoning = reasoning
+
+            # Record as a failure candidate for eval asset generation
+            asset_gen.record_failure(FailingTrace(
+                scenario=scenario,
+                eval_id=eval_task.id,
+                input_payload=eval_task.input_payload,
+                agent_output=agent_output_text,
+                expected_rubric=eval_task.expected_behavior_rubric,
+                score=score,
+                reasoning=reasoning,
+            ))
         
         if not scores:
             console.print("[bold red]❌ All requests failed to execute![/bold red]")
@@ -176,6 +191,20 @@ def run_benchmark(
         
         record_run(scenario, "baseline", final_score, details={"reasoning": overall_reasoning, "sample_size": len(scores)})
         print_benchmark_score(scenario, final_score, overall_reasoning, baseline)
+
+        # ── Eval Asset Generation on failure ──────────────────────────────
+        if asset_gen.has_failures:
+            output_dir = build_output_dir(scenario)
+            saved_path = asset_gen.save(output_dir)
+            console.print(f"\n[bold yellow]⚠️  {asset_gen.failure_count} sample(s) scored below threshold — eval assets saved.[/bold yellow]")
+            console.print(f"[dim]   Output → {saved_path}[/dim]")
+            console.print("\n[bold cyan]🛠  Next steps to improve your agent:[/bold cyan]")
+            console.print(f"[bold white]  1. Regenerate evals anytime:[/bold white]")
+            console.print(f"     [green]evalmonkey generate-evals --traces-file {saved_path}/traces.json[/green]")
+            console.print(f"[bold white]  2. Pass improvement brief to your coding agent:[/bold white]")
+            console.print(f"     [green]cat {saved_path}/improvement_prompt.md | pbcopy  # then paste into Claude/Cursor[/green]")
+            console.print(f"[bold white]  3. Re-run this benchmark after fixing:[/bold white]")
+            console.print(f"     [green]evalmonkey run-benchmark --scenario {scenario}[/green]\n")
     finally:
         if agent_process:
             agent_process.terminate()
@@ -248,13 +277,27 @@ def run_chaos(
     try:
         generator = LoadGenerator(effective_url, request_key=effective_req_key, response_path=effective_resp_path)
         judge = LLMJudgeProvider()
+        asset_gen = EvalAssetGenerator()
         scores = []
         
         for eval_task in evals_to_run:
             resp = asyncio.run(generator.run_scenario(scenario, eval_task.input_payload, chaos_profile=chaos_profile))
             agent_output_text = str(resp.get("data", resp.get("error_message", "No output")))
             evaluation = judge.score_run(eval_task.expected_behavior_rubric, agent_output_text)
-            scores.append(evaluation.get("score", 0))
+            score = evaluation.get("score", 0)
+            reasoning = evaluation.get("reasoning", "No reasoning provided.")
+            scores.append(score)
+
+            asset_gen.record_failure(FailingTrace(
+                scenario=scenario,
+                eval_id=eval_task.id,
+                input_payload=eval_task.input_payload,
+                agent_output=agent_output_text,
+                expected_rubric=eval_task.expected_behavior_rubric,
+                score=score,
+                reasoning=reasoning,
+                chaos_profile=chaos_profile,
+            ))
             
         if not scores:
             return
@@ -267,6 +310,15 @@ def run_chaos(
         
         record_run(scenario, "chaos", final_score, details={"chaos_profile": chaos_profile, "sample_size": len(scores)})
         print_chaos_result(scenario, chaos_profile, final_score, original_baseline)
+
+        # ── Eval Asset Generation on chaos failure ─────────────────────────
+        if asset_gen.has_failures:
+            output_dir = build_output_dir(f"{scenario}_{chaos_profile}")
+            saved_path = asset_gen.save(output_dir)
+            console.print(f"\n[bold yellow]⚠️  Chaos caused {asset_gen.failure_count} failure(s) — eval assets saved.[/bold yellow]")
+            console.print(f"[dim]   Output → {saved_path}[/dim]")
+            console.print(f"[bold cyan]🛠  Run this to get your improvement brief:[/bold cyan]")
+            console.print(f"     [green]cat {saved_path}/improvement_prompt.md[/green]\n")
     finally:
         if agent_process:
             agent_process.terminate()
@@ -304,8 +356,11 @@ def run_chaos_suite(
     Barrage an endpoint with EVERY available client-side chaos profile sequentially.
     """
     PROFILES = [
+        # Client-side (12)
         "client_prompt_injection", "client_typo_injection", "client_schema_mutation",
-        "client_language_shift", "client_payload_bloat", "client_empty_payload", "client_context_truncation"
+        "client_language_shift", "client_payload_bloat", "client_empty_payload",
+        "client_context_truncation", "client_unicode_flood", "client_role_impersonation",
+        "client_repetition_loop", "client_negative_sentiment", "client_length_constraint_violation",
     ]
     console.print("[bold cyan]=> 🌪️ STARTING FULL CHAOS BARRAGE SUITE 🌪️[/bold cyan]")
     
@@ -355,6 +410,56 @@ def run_chaos_suite(
         if agent_process:
             agent_process.terminate()
     console.print("\n[bold green]=> Barrage Complete! Run `evalmonkey history --scenario <id>` to see all entries.[/bold green]")
+
+
+@app.command()
+def generate_evals(
+    traces_file: str = typer.Option(..., help="Path to a traces.json file produced by a previous benchmark run"),
+    output_dir: str = typer.Option(None, help="Directory to write evals.json and improvement_prompt.md (defaults to same folder as traces_file)"),
+    langfuse_dataset: str = typer.Option(None, help="If set, also push the evals to this Langfuse dataset name (requires LANGFUSE_PUBLIC_KEY + LANGFUSE_SECRET_KEY)"),
+    n: int = typer.Option(5, help="Number of improvement eval scenarios to generate"),
+):
+    """
+    (Re)generate improvement eval scenarios from a saved traces.json file.
+    Pass the output improvement_prompt.md to Claude Code, Cursor, or any coding agent
+    to automatically improve your agent based on its failures.
+    """
+    import json as _json
+    from pathlib import Path as _Path
+    from evalmonkey.evals.asset_generator import EvalAssetGenerator, FailingTrace
+
+    traces_path = _Path(traces_file)
+    if not traces_path.exists():
+        console.print(f"[bold red]❌ traces.json not found: {traces_file}[/bold red]")
+        raise typer.Exit(1)
+
+    raw = _json.loads(traces_path.read_text(encoding="utf-8"))
+    asset_gen = EvalAssetGenerator(failure_threshold=101)  # treat all loaded traces as failures
+    for item in raw:
+        asset_gen.record_failure(FailingTrace(
+            scenario=item.get("scenario", ""),
+            eval_id=item.get("eval_id", ""),
+            input_payload=item.get("input_payload", {}),
+            agent_output=item.get("agent_output", ""),
+            expected_rubric=item.get("expected_rubric", ""),
+            score=item.get("score", 0),
+            reasoning=item.get("reasoning", ""),
+            chaos_profile=item.get("chaos_profile"),
+        ))
+
+    out = output_dir or str(traces_path.parent)
+    saved = asset_gen.save(out)
+    console.print(f"[bold green]✅ Improvement evals saved to {saved}[/bold green]")
+    console.print(f"[bold cyan]=> Coding agent prompt:[/bold cyan]")
+    console.print(f"     [green]cat {saved}/improvement_prompt.md | pbcopy[/green]")
+    console.print(f"   Then paste into Claude Code or Cursor to auto-fix your agent.\n")
+
+    if langfuse_dataset:
+        ok = asset_gen.export_to_langfuse(langfuse_dataset)
+        if ok:
+            console.print(f"[bold green]✅ Evals pushed to Langfuse dataset: '{langfuse_dataset}'[/bold green]")
+        else:
+            console.print("[bold yellow]⚠️  Langfuse export skipped (LANGFUSE_PUBLIC_KEY / LANGFUSE_SECRET_KEY not set)[/bold yellow]")
 
 @app.command()
 def serve_mcp():
