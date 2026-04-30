@@ -137,7 +137,7 @@ Each adapter is ~40 lines and exposes a `/solve` endpoint on `localhost`.
 
 
 ## 🌍 Supported Standard Benchmarks
-EvalMonkey natively supports **20** off-the-shelf benchmark datasets pulled directly from HuggingFace. All benchmarks are **text-only** — no vision, audio, or multimodal agent required. List them anytime via the CLI:
+EvalMonkey natively supports **19** off-the-shelf benchmark datasets pulled directly from HuggingFace. All benchmarks are **text-only** — no vision, audio, or multimodal agent required. List them anytime via the CLI:
 ```bash
 evalmonkey list-benchmarks
 ```
@@ -148,7 +148,6 @@ evalmonkey list-benchmarks
 | `xlam` | 🔧 Tool Use | XLAM Function Calling 60k — tool execution & parameter structuring. |
 | `swe-bench` | 💻 Coding | SWE-Bench — resolve real-world GitHub issues from a description only. |
 | `gaia-benchmark` | 🔍 Research | GAIA — multi-step real-world tasks requiring web/tool chaining. |
-| `webarena` | 🔍 Research | WebArena — complex browser & computer usage scenarios (stubbed). |
 | `human-eval` | 💻 Coding | HumanEval — Python function synthesis from docstrings. |
 | `mmlu` | 💬 Q&A | MMLU — general knowledge across 57 academic subjects. |
 | `arc` | 🧠 Reasoning | ARC Challenge — hard grade-school science multiple-choice. |

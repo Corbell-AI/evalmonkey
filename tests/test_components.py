@@ -94,10 +94,10 @@ def test_cli_no_target_url():
 
 # ----------- TEST NEW BENCHMARKS CATALOGUE -----------
 
-def test_catalogue_has_20_benchmarks():
+def test_catalogue_has_19_benchmarks():
     from evalmonkey.scenarios.standard_benchmarks import get_supported_benchmarks
     cat = get_supported_benchmarks()
-    assert len(cat) == 20
+    assert len(cat) == 19
 
 
 def test_benchmark_categories_returned():
