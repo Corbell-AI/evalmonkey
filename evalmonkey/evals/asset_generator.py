@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import textwrap
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -139,6 +140,12 @@ class EvalAssetGenerator:
                 response_format={"type": "json_object"},
             )
             content = response.choices[0].message.content
+            # Strip markdown code fences — some providers (Anthropic)
+            # wrap JSON in ```json ... ``` even with response_format
+            if content and "```" in content:
+                match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", content, re.DOTALL)
+                if match:
+                    content = match.group(1).strip()
             # LLM sometimes wraps the array in {"evals": [...]}
             parsed = json.loads(content)
             if isinstance(parsed, list):
