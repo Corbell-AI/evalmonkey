@@ -1,6 +1,21 @@
 import os
 import json
+import re
 from evalmonkey.utils.llm import call_llm
+
+def _strip_code_fences(text: str) -> str:
+    """Strip markdown code fences from LLM output.
+
+    Some providers (notably Anthropic via litellm) wrap JSON responses in
+    ```json ... ``` code blocks even when response_format=json_object is
+    requested.  This causes json.loads() to fail with a parse error.
+    """
+    if text and "```" in text:
+        match = re.search(r"```(?:json)?\s*\n?(.*?)\n?\s*```", text, re.DOTALL)
+        if match:
+            return match.group(1).strip()
+    return text
+
 
 class LLMJudgeProvider:
     """
@@ -32,6 +47,7 @@ class LLMJudgeProvider:
                 response_format={"type": "json_object"}
             )
             content = response.choices[0].message.content
+            content = _strip_code_fences(content)
             return json.loads(content)
         except Exception as e:
             # Fallback if there's a JSON parse error or API issue
