@@ -34,6 +34,25 @@ EvalMonkey natively supports evaluating ANY LLM: **AWS Bedrock**, **Azure**, **G
 
 ---
 
+## 📊 EvalMonkey Web Dashboard
+
+Visualize all your benchmark runs, track reliability scores over time, and inspect failure traces interactively!
+
+<p align="center">
+  <img src="assets/evalmonkey-dashboard.png" alt="EvalMonkey Dashboard" style="max-width: 100%; border-radius: 8px; margin-bottom: 10px;">
+  <br>
+  <i>EvalMonkey Main Dashboard showing scenario trends and score histories.</i>
+</p>
+
+<p align="center">
+  <img src="assets/em-benchmark-run.png" alt="Benchmark Run Results" style="max-width: 48%; border-radius: 8px; margin-right: 2%;">
+  <img src="assets/em-mmlu-run.png" alt="MMLU Scenario View" style="max-width: 48%; border-radius: 8px;">
+  <br>
+  <i>Deep-dive into specific benchmark runs and chaos tests.</i>
+</p>
+
+---
+
 ## ⚡️ Quick Start
 
 ### Option A — Let Claude Code or Cursor set it up for you (30 seconds)
