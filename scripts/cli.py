@@ -51,6 +51,63 @@ def init(
     console.print("  2. Run: [bold]evalmonkey run-benchmark --scenario mmlu[/bold]")
     console.print("  3. Run: [bold]evalmonkey run-chaos --scenario mmlu --chaos-profile client_prompt_injection[/bold]\n")
 
+@app.command(name="generate-ci")
+def generate_ci(
+    output: str = typer.Option(".github/workflows/evalmonkey.yml", help="Path to write the GitHub Actions workflow")
+):
+    """
+    Generate a GitHub Actions workflow to run EvalMonkey on every pull request.
+    This creates an automated feedback loop for agent reliability!
+    """
+    import os
+    from pathlib import Path
+    
+    CI_YAML_TEMPLATE = """name: Agent Reliability Benchmark
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  evalmonkey-benchmark:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install EvalMonkey
+        run: pip install git+https://github.com/Corbell-AI/evalmonkey.git
+        
+      # TODO: Add steps here to install dependencies and start your agent in the background
+      # - name: Install Agent dependencies
+      #   run: pip install -r requirements.txt
+      # - name: Start Agent
+      #   run: python src/agent.py &
+      #   env:
+      #     OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          
+      - name: Wait for Agent
+        run: sleep 5
+        
+      - name: Run EvalMonkey Benchmark
+        run: evalmonkey run-benchmark --scenario gsm8k --limit 10
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          EVAL_MODEL: "gpt-4o"
+"""
+    os.makedirs(os.path.dirname(output), exist_ok=True)
+    with open(output, "w") as f:
+        f.write(CI_YAML_TEMPLATE)
+        
+    console.print(f"[bold green]✅ Generated CI/CD workflow at {output}[/bold green]")
+    console.print("This will run EvalMonkey benchmarks on every PR to ensure your agent's reliability.")
+    console.print("Make sure to update the workflow to start your agent in the background!")
+
+
 @app.command()
 def list_benchmarks():
     """Lists the 10 off-the-shelf benchmark datasets natively supported."""
