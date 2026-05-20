@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { BenchmarkInfo, CATEGORY_COLORS } from '@/lib/types'
-import { CHAOS_PROFILES, EVAL_MODELS } from '@/lib/benchmarks'
+import { CHAOS_PROFILES, CODING_CHAOS_PROFILES, EVAL_MODELS } from '@/lib/benchmarks'
 import { ChevronRight, Zap, Bot, FlaskConical } from 'lucide-react'
 
 type Step = 1 | 2 | 3
@@ -24,6 +24,7 @@ export default function NewRunPage() {
   const [limit, setLimit] = useState(5)
   const [enableChaos, setEnableChaos] = useState(false)
   const [chaosProfile, setChaosProfile] = useState('client_prompt_injection')
+  const [showCodingChaosOnly, setShowCodingChaosOnly] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -33,6 +34,17 @@ export default function NewRunPage() {
   }, [])
 
   const categories = Array.from(new Set(benchmarks.map(b => b.category)))
+
+  // Detect if the selected benchmark is a coding-category one
+  const selectedBenchmarkInfo = benchmarks.find(b => b.id === selectedBenchmark)
+  const isCodingBenchmark = selectedBenchmarkInfo?.category === 'Coding'
+
+  // Visible chaos profiles: auto-surface coding ones when benchmark is Coding
+  const visibleChaosProfiles = showCodingChaosOnly
+    ? CODING_CHAOS_PROFILES
+    : isCodingBenchmark && !showCodingChaosOnly
+    ? CHAOS_PROFILES  // show all but coding ones bubble first
+    : CHAOS_PROFILES.filter(p => p.category === 'general')
 
   const handleLaunch = async () => {
     if (!selectedBenchmark) return
@@ -278,22 +290,49 @@ export default function NewRunPage() {
                 />
               </div>
               {enableChaos && (
-                <div className="grid grid-cols-2 gap-1.5 mt-3">
-                  {CHAOS_PROFILES.map(p => (
-                    <button
-                      key={p.id}
-                      onClick={() => setChaosProfile(p.id)}
-                      className="text-left px-3 py-2 rounded transition-all"
-                      style={{
-                        background: chaosProfile === p.id ? 'rgba(239,68,68,0.08)' : '#0e0e0e',
-                        border: `1px solid ${chaosProfile === p.id ? 'rgba(239,68,68,0.25)' : '#1e1e1e'}`,
-                        borderRadius: '5px',
-                      }}
-                    >
-                      <div className="text-xs font-medium text-white">{p.label}</div>
-                      <div className="text-xs leading-snug" style={{ color: '#555' }}>{p.description}</div>
-                    </button>
-                  ))}
+                <div>
+                  {isCodingBenchmark && (
+                    <div className="flex gap-2 mb-3">
+                      <button
+                        onClick={() => { setShowCodingChaosOnly(false); setChaosProfile('client_prompt_injection') }}
+                        className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
+                          !showCodingChaosOnly ? 'bg-[#ef4444] text-white font-semibold' : 'bg-[#161616] text-[#888] hover:bg-[#222]'
+                        }`}
+                      >
+                        All Profiles
+                      </button>
+                      <button
+                        onClick={() => { setShowCodingChaosOnly(true); setChaosProfile('code_context_strip') }}
+                        className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
+                          showCodingChaosOnly ? 'bg-[#ef4444] text-white font-semibold' : 'bg-[#161616] text-[#888] hover:bg-[#222]'
+                        }`}
+                      >
+                        🖥 Coding
+                      </button>
+                    </div>
+                  )}
+                  <div className="grid grid-cols-2 gap-1.5">
+                    {(isCodingBenchmark ? CHAOS_PROFILES : CHAOS_PROFILES.filter(p => p.category === 'general'))
+                      .filter(p => !showCodingChaosOnly || p.category === 'coding')
+                      .map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => setChaosProfile(p.id)}
+                        className="text-left px-3 py-2 rounded transition-all"
+                        style={{
+                          background: chaosProfile === p.id ? 'rgba(239,68,68,0.08)' : '#0e0e0e',
+                          border: `1px solid ${chaosProfile === p.id ? 'rgba(239,68,68,0.25)' : '#1e1e1e'}`,
+                          borderRadius: '5px',
+                        }}
+                      >
+                        {p.category === 'coding' && (
+                          <span className="text-xs mr-1" style={{ color: '#f97316' }}>🖥</span>
+                        )}
+                        <span className="text-xs font-medium text-white">{p.label}</span>
+                        <div className="text-xs leading-snug mt-0.5" style={{ color: '#555' }}>{p.description}</div>
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

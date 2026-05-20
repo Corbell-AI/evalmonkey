@@ -65,11 +65,15 @@ def get_config():
 # ── Benchmarks ────────────────────────────────────────────────────────────────
 
 @app.get("/api/benchmarks", response_model=List[BenchmarkInfo])
-def list_benchmarks():
-    return [
+def list_benchmarks(category: Optional[str] = None):
+    """List supported benchmarks, optionally filtered by agent category."""
+    items = [
         BenchmarkInfo(id=k, description=v["description"], category=v["agent_category"])
         for k, v in SUPPORTED_BENCHMARKS.items()
     ]
+    if category:
+        items = [b for b in items if b.category.lower() == category.lower()]
+    return items
 
 
 # ── Runs ──────────────────────────────────────────────────────────────────────
