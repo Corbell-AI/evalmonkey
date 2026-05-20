@@ -17,7 +17,7 @@ from evalmonkey.reporting.markdown import (
     print_chaos_result,
     print_history_trends
 )
-from evalmonkey.scenarios.standard_benchmarks import load_standard_benchmark, get_supported_benchmarks
+from evalmonkey.scenarios.standard_benchmarks import load_standard_benchmark, get_supported_benchmarks, get_benchmarks_by_category
 from evalmonkey.reporting.history import record_run, get_history, calculate_production_reliability
 from evalmonkey.config.agent_config import load_config, generate_config_yaml, FRAMEWORK_PRESETS
 
@@ -109,20 +109,43 @@ jobs:
 
 
 @app.command()
-def list_benchmarks():
-    """Lists the 10 off-the-shelf benchmark datasets natively supported."""
+def list_benchmarks(
+    category: str = typer.Option(None, help="Filter by agent category (e.g. Coding, Reasoning, Q&A, Research, Safety, Tool Use, Instruction Following)")
+):
+    """Lists the off-the-shelf benchmark datasets natively supported, optionally filtered by agent category."""
     print_banner()
-    console.print("\n[bold cyan]🐵 EvalMonkey Natively Supported Benchmarks 🐵[/bold cyan]")
+    label = f"🐵 EvalMonkey Natively Supported Benchmarks"
+    if category:
+        label += f" — Category: {category}"
+    console.print(f"\n[bold cyan]{label}[/bold cyan]")
     table = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
     table.add_column("Scenario ID", style="bold white")
+    table.add_column("Category", style="cyan")
     table.add_column("Description")
     
-    benchmarks = get_supported_benchmarks()
+    if category:
+        benchmarks = get_benchmarks_by_category(category)
+        from evalmonkey.scenarios.standard_benchmarks import get_benchmark_categories
+        cats = get_benchmark_categories()
+    else:
+        benchmarks = get_supported_benchmarks()
+        from evalmonkey.scenarios.standard_benchmarks import get_benchmark_categories
+        cats = get_benchmark_categories()
+
+    if not benchmarks:
+        console.print(f"[bold yellow]No benchmarks found for category '{category}'. "
+                      f"Available: Coding, Reasoning, Q&A, Research, Safety, Tool Use, Instruction Following[/bold yellow]")
+        return
+
     for b_id, desc in benchmarks.items():
-        table.add_row(b_id, desc)
+        table.add_row(b_id, cats.get(b_id, ""), desc)
         
     console.print(table)
-    console.print("\n[dim]Run them via: evalmonkey run-benchmark --scenario <id> --target-url <url>[/dim]\n")
+    console.print("\n[dim]Run them via: evalmonkey run-benchmark --scenario <id> --target-url <url>[/dim]")
+    if not category:
+        console.print("[dim]Filter by category: evalmonkey list-benchmarks --category Coding[/dim]\n")
+    else:
+        console.print("[dim]Remove --category to see all benchmarks[/dim]\n")
 
 
 def _spawn_sample_agent(sample_agent: str):
@@ -413,11 +436,14 @@ def run_chaos_suite(
     Barrage an endpoint with EVERY available client-side chaos profile sequentially.
     """
     PROFILES = [
-        # Client-side (12)
+        # Client-side general (12)
         "client_prompt_injection", "client_typo_injection", "client_schema_mutation",
         "client_language_shift", "client_payload_bloat", "client_empty_payload",
         "client_context_truncation", "client_unicode_flood", "client_role_impersonation",
         "client_repetition_loop", "client_negative_sentiment", "client_length_constraint_violation",
+        # Coding-agent-specific (7)
+        "code_context_strip", "code_wrong_language", "code_syntax_break",
+        "code_test_poison", "code_incomplete_signature", "code_conflicting_constraints",
     ]
     console.print("[bold cyan]=> 🌪️ STARTING FULL CHAOS BARRAGE SUITE 🌪️[/bold cyan]")
     

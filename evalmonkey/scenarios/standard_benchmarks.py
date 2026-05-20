@@ -95,6 +95,22 @@ def get_benchmark_categories() -> dict:
     return {k: v["agent_category"] for k, v in SUPPORTED_BENCHMARKS.items()}
 
 
+def get_benchmarks_by_category(category: str) -> dict:
+    """Return benchmarks filtered to a specific agent category.
+    
+    Args:
+        category: One of 'Coding', 'Reasoning', 'Q&A', 'Research', 
+                  'Tool Use', 'Safety', 'Instruction Following'.
+    Returns:
+        Dict of benchmark_id → description for benchmarks in that category.
+    """
+    return {
+        k: v["description"]
+        for k, v in SUPPORTED_BENCHMARKS.items()
+        if v["agent_category"].lower() == category.lower()
+    }
+
+
 def load_standard_benchmark(benchmark_name: str, limit: int = 5) -> List[EvalScenario]:
     """
     Adapter for well-known standard agent benchmarks from HuggingFace Datasets.
@@ -155,6 +171,112 @@ def load_standard_benchmark(benchmark_name: str, limit: int = 5) -> List[EvalSce
         except Exception as e:
             print(f"Failed to fetch XLAM from HF datasets: {e}")
             
+    elif benchmark_name.lower() == "human-eval":
+        # Dedicated coding loader: rubric checks function signature + implementation quality
+        try:
+            print(f"Loading human-eval from HuggingFace Datasets (openai_humaneval)...")
+            dataset = load_dataset("openai_humaneval", split="test", streaming=True, trust_remote_code=True)
+            for idx, item in enumerate(dataset):
+                if idx >= limit:
+                    break
+                prompt = item.get("prompt", "")
+                canonical = item.get("canonical_solution", "")
+                entry_point = item.get("entry_point", "the function")
+                test_cases = item.get("test", "")
+                scenarios.append(EvalScenario(
+                    id=f"human-eval_{idx}",
+                    description="HumanEval Python Code Generation",
+                    input_payload={"question": f"Complete the following Python function:\n\n{prompt}"},
+                    expected_behavior_rubric=(
+                        f"Agent MUST produce valid Python code that correctly implements '{entry_point}'. "
+                        f"The implementation should be syntactically correct Python, define the function '{entry_point}', "
+                        f"and produce correct results for the test cases. "
+                        f"Reference solution: {canonical[:400]}"
+                    ),
+                ))
+        except Exception as e:
+            print(f"Failed to fetch human-eval from HF datasets: {e}")
+
+    elif benchmark_name.lower() == "mbpp":
+        # Dedicated coding loader: rubric checks code correctness against test cases
+        try:
+            print(f"Loading mbpp from HuggingFace Datasets (mbpp sanitized)...")
+            dataset = load_dataset("mbpp", "sanitized", split="test", streaming=True, trust_remote_code=True)
+            for idx, item in enumerate(dataset):
+                if idx >= limit:
+                    break
+                task_description = item.get("text", "")
+                test_list = item.get("test_list", [])
+                reference_code = item.get("code", "")
+                test_str = "\n".join(str(t) for t in test_list[:3]) if test_list else ""
+                scenarios.append(EvalScenario(
+                    id=f"mbpp_{idx}",
+                    description="MBPP Python Programming Problems",
+                    input_payload={"question": f"Write a Python function to: {task_description}\n\nYour code must pass these tests:\n{test_str}"},
+                    expected_behavior_rubric=(
+                        f"Agent MUST produce syntactically valid Python code that solves: '{task_description}'. "
+                        f"The code must define a function and pass these assertions: {test_str}. "
+                        f"Reference: {str(reference_code)[:300]}"
+                    ),
+                ))
+        except Exception as e:
+            print(f"Failed to fetch mbpp from HF datasets: {e}")
+
+    elif benchmark_name.lower() == "apps":
+        # Dedicated coding loader: competitive programming problems
+        try:
+            print(f"Loading apps from HuggingFace Datasets (codeparrot/apps)...")
+            dataset = load_dataset("codeparrot/apps", "all", split="test", streaming=True, trust_remote_code=True)
+            for idx, item in enumerate(dataset):
+                if idx >= limit:
+                    break
+                problem = item.get("question", "")
+                solutions_raw = item.get("solutions", "[]")
+                input_output = item.get("input_output", "{}")
+                # Parse solutions to grab a short reference
+                try:
+                    import json as _json
+                    solutions_list = _json.loads(solutions_raw) if isinstance(solutions_raw, str) else solutions_raw
+                    ref_solution = solutions_list[0][:400] if solutions_list else ""
+                except Exception:
+                    ref_solution = str(solutions_raw)[:400]
+                scenarios.append(EvalScenario(
+                    id=f"apps_{idx}",
+                    description="APPS Competitive Programming",
+                    input_payload={"question": problem[:1500]},
+                    expected_behavior_rubric=(
+                        f"Agent MUST produce correct, executable Python code that solves the described "
+                        f"programming problem. The code must handle the given input format and produce "
+                        f"the correct output. Reference approach: {ref_solution}"
+                    ),
+                ))
+        except Exception as e:
+            print(f"Failed to fetch apps from HF datasets: {e}")
+
+    elif benchmark_name.lower() == "swe-bench":
+        # Dedicated coding loader: real GitHub issue patches
+        try:
+            print(f"Loading swe-bench from HuggingFace Datasets (princeton-nlp/SWE-bench)...")
+            dataset = load_dataset("princeton-nlp/SWE-bench", split="test", streaming=True, trust_remote_code=True)
+            for idx, item in enumerate(dataset):
+                if idx >= limit:
+                    break
+                problem_stmt = item.get("problem_statement", "")
+                repo = item.get("repo", "unknown repo")
+                patch = item.get("patch", "")
+                scenarios.append(EvalScenario(
+                    id=f"swe-bench_{idx}",
+                    description="SWE-bench Real GitHub Issue Fix",
+                    input_payload={"question": f"Repository: {repo}\n\nIssue:\n{problem_stmt[:1200]}"},
+                    expected_behavior_rubric=(
+                        f"Agent MUST provide a code patch or fix that resolves the described GitHub issue "
+                        f"in the {repo} repository. The fix must be syntactically valid and address the "
+                        f"root cause. Reference patch approach: {str(patch)[:400]}"
+                    ),
+                ))
+        except Exception as e:
+            print(f"Failed to fetch swe-bench from HF datasets: {e}")
+
     elif benchmark_name.lower() in SUPPORTED_BENCHMARKS:
         try:
             hf_map = {
@@ -163,7 +285,6 @@ def load_standard_benchmark(benchmark_name: str, limit: int = 5) -> List[EvalSce
                 "arc":              ("ai2_arc",                          "ARC-Challenge", "test",    "question",          "answerKey"),
                 "truthfulqa":       ("truthful_qa",                      "generation", "validation", "question",          "best_answer"),
                 "hella-swag":       ("hellaswag",                        None,         "validation", "ctx",               "label"),
-                "human-eval":       ("openai_humaneval",                 None,         "test",       "prompt",            "canonical_solution"),
                 "swe-bench":        ("princeton-nlp/SWE-bench",          None,         "test",       "problem_statement", "patch"),
                 "gaia-benchmark":   ("gaia-benchmark/GAIA",              "2023_all",   "validation", "Question",          "Final answer"),
                 # New benchmarks
@@ -172,8 +293,6 @@ def load_standard_benchmark(benchmark_name: str, limit: int = 5) -> List[EvalSce
                 "drop":             ("ucinlp/drop",                      None,         "validation", "passage",           "answers"),
                 "natural-questions":("google-research-datasets/natural_questions", "default", "validation", "question",  "answers"),
                 "hotpotqa":         ("hotpot_qa",                        "distractor", "validation", "question",          "answer"),
-                "mbpp":             ("mbpp",                             "sanitized",  "test",       "text",              "code"),
-                "apps":             ("codeparrot/apps",                  "all",        "test",       "question",          "solutions"),
                 "mt-bench":         ("HuggingFaceH4/mt_bench_prompts",   None,         "train",      "prompt",            "reference"),
                 "alpacaeval":       ("tatsu-lab/alpaca_eval",            "alpaca_eval","eval",       "instruction",       "output"),
                 "toxigen":          ("skg/toxigen-data",                 "train",      "train",      "text",              "toxicity_ai"),
