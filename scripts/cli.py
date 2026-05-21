@@ -160,6 +160,11 @@ def _spawn_sample_agent(sample_agent: str):
         proc = subprocess.Popen(["python", "apps/research_agent/app.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         time.sleep(3)
         return proc, target_url
+    elif sample_agent == "coding_agent":
+        target_url = "http://127.0.0.1:8003/solve"
+        proc = subprocess.Popen(["python", "apps/coding_agent/app.py"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(3)
+        return proc, target_url
     return None, None
 
 @app.command()
