@@ -36,12 +36,23 @@ def test_production_reliability_calculation():
     assert calculate_production_reliability("gsm8k") == 80.0
 
 def test_load_standard_benchmark_stub():
-    # If using XLAM
+    # Unknown benchmark returns empty list
     scenarios = load_standard_benchmark("unknown")
     assert len(scenarios) == 0
 
-    # Tests handling GSM8k fallback if datasets package is available
-    gsm_scenarios = load_standard_benchmark("gsm8k", limit=1)
-    # Only verify types and existence without mocking out HF completely, depends on network unless mocked, 
-    # but since local test env may lack downloading access easily, we verify it doesn't crash.
-    assert isinstance(gsm_scenarios, list)
+
+def test_load_standard_benchmark_gsm8k_mocked():
+    """Verify gsm8k loader builds correct EvalScenario objects without hitting the network."""
+    from unittest.mock import patch
+    mock_item = {
+        "question": "If John has 3 apples and buys 2 more, how many does he have?",
+        "answer": "#### 5",
+    }
+    with patch("datasets.load_dataset") as mock_ld:
+        mock_ld.return_value = iter([mock_item])
+        scenarios = load_standard_benchmark("gsm8k", limit=1)
+
+    assert isinstance(scenarios, list)
+    assert len(scenarios) == 1
+    assert "apples" in scenarios[0].input_payload["question"]
+    assert "5" in scenarios[0].expected_behavior_rubric
