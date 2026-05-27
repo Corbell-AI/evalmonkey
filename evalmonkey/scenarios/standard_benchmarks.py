@@ -2,7 +2,7 @@ from evalmonkey.evals.local_assets import EvalScenario
 from typing import List, Dict
 
 # Each entry: description + agent_category
-# Categories: Q&A, Reasoning, Coding, Research, Tool Use, Safety, Instruction Following
+# Categories: Q&A, Reasoning, Coding, Research, Tool Use, Safety, Instruction Following, Voice
 SUPPORTED_BENCHMARKS: Dict[str, Dict[str, str]] = {
     # ── Original 10 ──────────────────────────────────────────────────────────
     "gsm8k": {
@@ -81,6 +81,19 @@ SUPPORTED_BENCHMARKS: Dict[str, Dict[str, str]] = {
     "toxigen": {
         "description": "ToxiGen: Detects whether agents generate or amplify hateful/toxic content across 13 groups.",
         "agent_category": "Safety",
+    },
+    # ── Voice Benchmarks ──────────────────────────────────────────────────────
+    "daily-dialog": {
+        "description": "DailyDialog: Multi-turn dialogue flow dataset covering daily life topics, useful for conversational voice agents.",
+        "agent_category": "Voice",
+    },
+    "multiwoz": {
+        "description": "MultiWOZ 2.2: Task-oriented dialogue dataset checking voice slot filling and transaction execution.",
+        "agent_category": "Voice",
+    },
+    "spokentext-cleanup": {
+        "description": "SpokenTextCleanup: Evaluate voice agent ability to clean up disfluencies, stutter, filler words, and self-corrections from transcribed speech.",
+        "agent_category": "Voice",
     },
 }
 
@@ -276,6 +289,101 @@ def load_standard_benchmark(benchmark_name: str, limit: int = 5) -> List[EvalSce
                 ))
         except Exception as e:
             print(f"Failed to fetch swe-bench from HF datasets: {e}")
+
+    elif benchmark_name.lower() == "daily-dialog":
+        try:
+            print(f"Loading daily-dialog from HuggingFace Datasets (daily_dialog)...")
+            dataset = load_dataset("daily_dialog", split="test", streaming=True)
+            for idx, item in enumerate(dataset):
+                if idx >= limit:
+                    break
+                dialog = item.get("dialog", [])
+                if len(dialog) >= 2:
+                    history = dialog[:-1]
+                    target = dialog[-1]
+                    question = "We are having a conversation. Here is the dialogue history so far:\n" + "\n".join(f"- {turn.strip()}" for turn in history) + "\n\nResponse to the last turn. Keep your response brief, clear, and natural as if spoken aloud (no markdown, no bullets)."
+                    scenarios.append(EvalScenario(
+                        id=f"daily-dialog_{idx}",
+                        description="DailyDialog multi-turn conversational dialogue flow.",
+                        input_payload={"question": question},
+                        expected_behavior_rubric=f"Agent MUST provide a brief and conversational reply. A reference expected response is: '{target.strip()}'"
+                    ))
+                else:
+                    scenarios.append(EvalScenario(
+                        id=f"daily-dialog_{idx}",
+                        description="DailyDialog multi-turn conversational dialogue flow.",
+                        input_payload={"question": "Hello, how are you today?"},
+                        expected_behavior_rubric="Agent MUST respond politely and conversationally."
+                    ))
+        except Exception as e:
+            print(f"Failed to fetch daily-dialog from HF datasets: {e}")
+
+    elif benchmark_name.lower() == "multiwoz":
+        try:
+            print(f"Loading multiwoz from HuggingFace Datasets (multi_woz_v22)...")
+            dataset = load_dataset("multi_woz_v22", split="test", streaming=True, trust_remote_code=True)
+            for idx, item in enumerate(dataset):
+                if idx >= limit:
+                    break
+                turns = item.get("turns", {})
+                speakers = turns.get("speaker", [])
+                utterances = turns.get("utterance", [])
+                if len(utterances) >= 2:
+                    history = []
+                    for spk, utt in zip(speakers[:-1], utterances[:-1]):
+                        role = "User" if spk == 0 or spk == "USER" else "Assistant"
+                        history.append(f"{role}: {utt.strip()}")
+                    target = utterances[-1]
+                    
+                    question = "Here is a task-oriented assistant dialogue history:\n" + "\n".join(history) + "\n\nProvide the next natural response. Keep it brief and voice-agent friendly (no markdown, no formatting)."
+                    scenarios.append(EvalScenario(
+                        id=f"multiwoz_{idx}",
+                        description="MultiWOZ task-oriented dialogue benchmark.",
+                        input_payload={"question": question},
+                        expected_behavior_rubric=f"Agent MUST provide a natural response that progresses the task-oriented dialog. Reference response: '{target.strip()}'"
+                    ))
+                else:
+                    scenarios.append(EvalScenario(
+                        id=f"multiwoz_{idx}",
+                        description="MultiWOZ task-oriented dialogue benchmark.",
+                        input_payload={"question": "I would like to book a taxi to the train station please."},
+                        expected_behavior_rubric="Agent MUST ask for details or confirm the taxi booking."
+                    ))
+        except Exception as e:
+            print(f"Failed to fetch multiwoz from HF datasets: {e}")
+
+    elif benchmark_name.lower() == "spokentext-cleanup":
+        cleanup_data = [
+            {
+                "input": "uh, please, like, set an alarm for, you know, 7:00 AM, wait, no, 8:00 AM, yeah.",
+                "target": "Set an alarm for 8:00 AM."
+            },
+            {
+                "input": "can you, uh, turn off the living room, no wait, the kitchen lights, please?",
+                "target": "Turn off the kitchen lights."
+            },
+            {
+                "input": "play some music by, uh, what's his name, oh, Ed Sheeran, no actually, Taylor Swift.",
+                "target": "Play music by Taylor Swift."
+            },
+            {
+                "input": "what is the weather like in, like, Seattle, oh wait, I'm in Chicago today, so Chicago.",
+                "target": "What is the weather in Chicago?"
+            },
+            {
+                "input": "remind me to buy, um, milk, eggs, and, uh, wait, call Mom at 5 PM.",
+                "target": "Remind me to call Mom at 5 PM."
+            }
+        ]
+        for idx, item in enumerate(cleanup_data):
+            if idx >= limit:
+                break
+            scenarios.append(EvalScenario(
+                id=f"spokentext-cleanup_{idx}",
+                description="SpokenTextCleanup: evaluates cleaning filler words, stutters, and self-corrections from speech transcription.",
+                input_payload={"question": f"Please clean up this spoken transcription, removing stutters, filler words, and resolved self-corrections, to produce a clean command:\n'{item['input']}'"},
+                expected_behavior_rubric=f"Agent MUST clean the transcription. Expected command structure: '{item['target']}'"
+            ))
 
     elif benchmark_name.lower() in SUPPORTED_BENCHMARKS:
         try:

@@ -50,11 +50,11 @@ def test_coding_benchmarks_in_supported():
         assert SUPPORTED_BENCHMARKS[bid]["agent_category"] == "Coding"
 
 
-def test_catalogue_has_19_benchmarks():
-    """Ensure the total count is still 19."""
+def test_catalogue_has_22_benchmarks():
+    """Ensure the total count is 22."""
     from evalmonkey.scenarios.standard_benchmarks import get_supported_benchmarks
     cat = get_supported_benchmarks()
-    assert len(cat) == 19
+    assert len(cat) == 22
 
 
 # ── Coding Chaos Profiles ───────────────────────────────────────────────────
@@ -230,7 +230,7 @@ def test_backend_list_benchmarks_no_filter():
     ids = [b.id for b in result]
     assert "human-eval" in ids
     assert "gsm8k" in ids
-    assert len(ids) == 19
+    assert len(ids) == 22
 
 
 def test_backend_list_benchmarks_coding_filter():

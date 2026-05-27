@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { api } from '@/lib/api'
 import { BenchmarkInfo, CATEGORY_COLORS } from '@/lib/types'
-import { CHAOS_PROFILES, CODING_CHAOS_PROFILES, EVAL_MODELS } from '@/lib/benchmarks'
+import { CHAOS_PROFILES, CODING_CHAOS_PROFILES, VOICE_CHAOS_PROFILES, EVAL_MODELS } from '@/lib/benchmarks'
 import { ChevronRight, Zap, Bot, FlaskConical } from 'lucide-react'
 
 type Step = 1 | 2 | 3
@@ -25,6 +25,7 @@ export default function NewRunPage() {
   const [enableChaos, setEnableChaos] = useState(false)
   const [chaosProfile, setChaosProfile] = useState('client_prompt_injection')
   const [showCodingChaosOnly, setShowCodingChaosOnly] = useState(false)
+  const [showVoiceChaosOnly, setShowVoiceChaosOnly] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
@@ -38,12 +39,15 @@ export default function NewRunPage() {
   // Detect if the selected benchmark is a coding-category one
   const selectedBenchmarkInfo = benchmarks.find(b => b.id === selectedBenchmark)
   const isCodingBenchmark = selectedBenchmarkInfo?.category === 'Coding'
+  const isVoiceBenchmark = selectedBenchmarkInfo?.category === 'Voice'
 
-  // Visible chaos profiles: auto-surface coding ones when benchmark is Coding
+  // Visible chaos profiles: auto-surface coding or voice ones depending on selected benchmark
   const visibleChaosProfiles = showCodingChaosOnly
     ? CODING_CHAOS_PROFILES
-    : isCodingBenchmark && !showCodingChaosOnly
-    ? CHAOS_PROFILES  // show all but coding ones bubble first
+    : showVoiceChaosOnly
+    ? VOICE_CHAOS_PROFILES
+    : (isCodingBenchmark || isVoiceBenchmark)
+    ? CHAOS_PROFILES
     : CHAOS_PROFILES.filter(p => p.category === 'general')
 
   const handleLaunch = async () => {
@@ -294,15 +298,15 @@ export default function NewRunPage() {
                   {isCodingBenchmark && (
                     <div className="flex gap-2 mb-3">
                       <button
-                        onClick={() => { setShowCodingChaosOnly(false); setChaosProfile('client_prompt_injection') }}
+                        onClick={() => { setShowCodingChaosOnly(false); setShowVoiceChaosOnly(false); setChaosProfile('client_prompt_injection') }}
                         className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
-                          !showCodingChaosOnly ? 'bg-[#ef4444] text-white font-semibold' : 'bg-[#161616] text-[#888] hover:bg-[#222]'
+                          (!showCodingChaosOnly && !showVoiceChaosOnly) ? 'bg-[#ef4444] text-white font-semibold' : 'bg-[#161616] text-[#888] hover:bg-[#222]'
                         }`}
                       >
                         All Profiles
                       </button>
                       <button
-                        onClick={() => { setShowCodingChaosOnly(true); setChaosProfile('code_context_strip') }}
+                        onClick={() => { setShowCodingChaosOnly(true); setShowVoiceChaosOnly(false); setChaosProfile('code_context_strip') }}
                         className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
                           showCodingChaosOnly ? 'bg-[#ef4444] text-white font-semibold' : 'bg-[#161616] text-[#888] hover:bg-[#222]'
                         }`}
@@ -311,10 +315,28 @@ export default function NewRunPage() {
                       </button>
                     </div>
                   )}
+                  {isVoiceBenchmark && (
+                    <div className="flex gap-2 mb-3">
+                      <button
+                        onClick={() => { setShowCodingChaosOnly(false); setShowVoiceChaosOnly(false); setChaosProfile('client_prompt_injection') }}
+                        className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
+                          (!showCodingChaosOnly && !showVoiceChaosOnly) ? 'bg-[#ef4444] text-white font-semibold' : 'bg-[#161616] text-[#888] hover:bg-[#222]'
+                        }`}
+                      >
+                        All Profiles
+                      </button>
+                      <button
+                        onClick={() => { setShowCodingChaosOnly(false); setShowVoiceChaosOnly(true); setChaosProfile('voice_asr_noise') }}
+                        className={`px-2.5 py-1 text-xs rounded-full transition-colors ${
+                          showVoiceChaosOnly ? 'bg-[#ef4444] text-white font-semibold' : 'bg-[#161616] text-[#888] hover:bg-[#222]'
+                        }`}
+                      >
+                        🎙 Voice
+                      </button>
+                    </div>
+                  )}
                   <div className="grid grid-cols-2 gap-1.5">
-                    {(isCodingBenchmark ? CHAOS_PROFILES : CHAOS_PROFILES.filter(p => p.category === 'general'))
-                      .filter(p => !showCodingChaosOnly || p.category === 'coding')
-                      .map(p => (
+                    {visibleChaosProfiles.map(p => (
                       <button
                         key={p.id}
                         onClick={() => setChaosProfile(p.id)}
@@ -327,6 +349,9 @@ export default function NewRunPage() {
                       >
                         {p.category === 'coding' && (
                           <span className="text-xs mr-1" style={{ color: '#f97316' }}>🖥</span>
+                        )}
+                        {p.category === 'voice' && (
+                          <span className="text-xs mr-1" style={{ color: '#22c55e' }}>🎙</span>
                         )}
                         <span className="text-xs font-medium text-white">{p.label}</span>
                         <div className="text-xs leading-snug mt-0.5" style={{ color: '#555' }}>{p.description}</div>

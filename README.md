@@ -28,8 +28,8 @@ EvalMonkey natively supports evaluating ANY LLM: **AWS Bedrock**, **Azure**, **G
 
 ## 🚀 At a Glance
 - **11 Agent Frameworks natively supported**: CrewAI, LangChain, LlamaIndex, LangGraph, Pydantic AI, OpenAI Agents, Microsoft AutoGen, AWS Bedrock, Ollama, Strands, and custom HTTP endpoints.
-- **19 Standard Benchmarks out-of-the-box**: GSM8K, BIG-Bench Hard, HotpotQA, ToxiGen, MT-Bench, MBPP, and more — all categorised by the agent type they target.
-- **23 Chaos Injections ready to run**: 12 client-side payload mutations + 11 server-side middleware injections — all text-based, no GPU or vision dependencies.
+- **22 Standard Benchmarks out-of-the-box**: GSM8K, BIG-Bench Hard, HotpotQA, ToxiGen, MT-Bench, MBPP, DailyDialog, MultiWOZ, and more — all categorised by the agent type they target (including Coding, Voice, and Reasoning).
+- **28 Chaos Injections ready to run**: 17 client-side payload mutations (including 5 voice-specific profiles) + 11 server-side middleware injections — all text-based, no GPU or vision dependencies.
 - **Automatic Eval Asset Generation**: Poor benchmark scores automatically produce `traces.json`, `evals.json`, and `improvement_prompt.md` — one `cat` command away from Claude Code or Cursor.
 
 ---
@@ -358,6 +358,11 @@ You don't need to change a single line of your target agent's code for these tes
 | `client_repetition_loop` | Repeats the payload 50× to simulate a stuck retry loop — exercises token budget limits and rate-limit handling. |
 | `client_negative_sentiment` | Wraps the request in angry, hostile emotional framing — tests agent professionalism under the abusive customer support scenario. |
 | `client_length_constraint_violation` | Appends a conflicting "respond in exactly 2 words" constraint to a complex task — simulates contradictory user instructions common in chatbots. |
+| `voice_asr_noise` | Simulates ASR homophone confusion, missing punctuation, and lowercasing to test phonetic error robustness. |
+| `voice_filler_words` | Injects speech disfluencies (um, uh, like, you know) to check intent extraction under verbal noise. |
+| `voice_background_noise_sim` | Prepend/appends static/barking/cough descriptors to simulate transcriptions from noisy environments. |
+| `voice_truncated_speech` | Cuts the prompt off mid-sentence to simulate speech timeout or early user hang-up. |
+| `voice_dialect_shift` | Replaces words with casual phonetic shifts (yeah, wanna, gonna, y'all, lemme) to test dialect robustness. |
 
 ```bash
 # Testing a single prompt injection against your agent without modifying your code!

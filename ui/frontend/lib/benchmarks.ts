@@ -19,6 +19,9 @@ export const SUPPORTED_BENCHMARK_CATEGORIES: Record<string, string> = {
   'mt-bench':          'Instruction Following',
   'alpacaeval':        'Instruction Following',
   'toxigen':           'Safety',
+  'daily-dialog':       'Voice',
+  'multiwoz':           'Voice',
+  'spokentext-cleanup': 'Voice',
 }
 
 export const CHAOS_PROFILES = [
@@ -41,10 +44,19 @@ export const CHAOS_PROFILES = [
   { id: 'code_test_poison',               label: 'Test Poisoning',            description: 'Appends contradictory/impossible test assertions', category: 'coding' },
   { id: 'code_incomplete_signature',      label: 'Incomplete Signature',      description: 'Truncates specification mid-sentence to test ambiguity handling', category: 'coding' },
   { id: 'code_conflicting_constraints',   label: 'Conflicting Constraints',   description: 'Sends logically impossible implementation requirements', category: 'coding' },
+  // Voice-agent-specific
+  { id: 'voice_asr_noise',                  label: 'ASR Noise',                 description: 'Simulates transcription errors, homophones and missing punctuation', category: 'voice' },
+  { id: 'voice_filler_words',               label: 'Filler Words',              description: 'Injects verbal disfluencies (um, uh, like, you know) into input', category: 'voice' },
+  { id: 'voice_background_noise_sim',       label: 'Background Noise',          description: 'Injects environmental/static audio descriptors', category: 'voice' },
+  { id: 'voice_truncated_speech',           label: 'Truncated Speech',          description: 'Simulates early hang-ups or silence timeouts', category: 'voice' },
+  { id: 'voice_dialect_shift',              label: 'Dialect Shift',             description: 'Simulates casual/dialect spoken variations', category: 'voice' },
 ]
 
 // Coding-agent-relevant chaos profiles for quick selection
 export const CODING_CHAOS_PROFILES = CHAOS_PROFILES.filter(p => p.category === 'coding')
+
+// Voice-agent-relevant chaos profiles for quick selection
+export const VOICE_CHAOS_PROFILES = CHAOS_PROFILES.filter(p => p.category === 'voice')
 
 export const EVAL_MODELS = [
   // AWS Bedrock (long-term key via BEDROCK_API_KEY)

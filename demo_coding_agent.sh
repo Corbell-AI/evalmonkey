@@ -159,12 +159,12 @@ run_benchmark() {
     echo ""
     step "Benchmark: ${BCYAN}${scenario}${NC}  (${LIMIT} samples)"
     divider
-    evalmonkey run-benchmark \
+    FORCE_COLOR=1 evalmonkey run-benchmark \
         --scenario    "$scenario" \
         --target-url  "$AGENT_URL" \
         --limit       "$LIMIT" \
         --request-key question \
-        --response-path data
+        --response-path data 2>&1 | sed -E "s/Found the latest cached dataset configuration( '[^']+')? at [^ ]+/Found the latest cached dataset configuration\1/g"
     divider
 }
 
@@ -174,13 +174,13 @@ run_chaos() {
     echo ""
     step "Chaos: ${BRED}${profile}${NC}  on  ${CYAN}${scenario}${NC}  (${LIMIT} samples)"
     divider
-    evalmonkey run-chaos \
+    FORCE_COLOR=1 evalmonkey run-chaos \
         --scenario     "$scenario" \
         --target-url   "$AGENT_URL" \
         --chaos-profile "$profile" \
         --limit        "$LIMIT" \
         --request-key  question \
-        --response-path data
+        --response-path data 2>&1 | sed -E "s/Found the latest cached dataset configuration( '[^']+')? at [^ ]+/Found the latest cached dataset configuration\1/g"
     divider
 }
 
