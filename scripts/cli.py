@@ -110,7 +110,7 @@ jobs:
 
 @app.command()
 def list_benchmarks(
-    category: str = typer.Option(None, help="Filter by agent category (e.g. Coding, Reasoning, Q&A, Research, Safety, Tool Use, Instruction Following)")
+    category: str = typer.Option(None, help="Filter by agent category (e.g. Coding, Reasoning, Q&A, Research, Safety, Tool Use, Instruction Following, Voice)")
 ):
     """Lists the off-the-shelf benchmark datasets natively supported, optionally filtered by agent category."""
     print_banner()
@@ -134,7 +134,7 @@ def list_benchmarks(
 
     if not benchmarks:
         console.print(f"[bold yellow]No benchmarks found for category '{category}'. "
-                      f"Available: Coding, Reasoning, Q&A, Research, Safety, Tool Use, Instruction Following[/bold yellow]")
+                      f"Available: Coding, Reasoning, Q&A, Research, Safety, Tool Use, Instruction Following, Voice[/bold yellow]")
         return
 
     for b_id, desc in benchmarks.items():
@@ -446,9 +446,12 @@ def run_chaos_suite(
         "client_language_shift", "client_payload_bloat", "client_empty_payload",
         "client_context_truncation", "client_unicode_flood", "client_role_impersonation",
         "client_repetition_loop", "client_negative_sentiment", "client_length_constraint_violation",
-        # Coding-agent-specific (7)
+        # Coding-agent-specific (6)
         "code_context_strip", "code_wrong_language", "code_syntax_break",
         "code_test_poison", "code_incomplete_signature", "code_conflicting_constraints",
+        # Voice-agent-specific (5)
+        "voice_asr_noise", "voice_filler_words", "voice_background_noise_sim",
+        "voice_truncated_speech", "voice_dialect_shift",
     ]
     console.print("[bold cyan]=> 🌪️ STARTING FULL CHAOS BARRAGE SUITE 🌪️[/bold cyan]")
     

@@ -211,6 +211,93 @@ class LoadGenerator:
                     "- Time complexity MUST be O(n)\n"
                 )
 
+            # ── Voice-Agent-Specific Chaos Profiles ──────────────────────────
+            elif chaos_profile == "voice_asr_noise":
+                # Simulates typical ASR (Automatic Speech Recognition) transcription errors,
+                # such as homophone confusion, missing punctuation, and lack of capitalization.
+                q = working_payload[self.request_key]
+                homophones = {
+                    "there": "their",
+                    "to": "too",
+                    "too": "two",
+                    "two": "to",
+                    "see": "sea",
+                    "write": "right",
+                    "right": "write",
+                    "accept": "except",
+                    "except": "accept",
+                    "weather": "whether",
+                    "whether": "weather",
+                    "you're": "your",
+                    "your": "you're",
+                }
+                words = q.split()
+                new_words = []
+                for w in words:
+                    clean_w = w.strip(".,!?\"'()[]{}:;-").lower()
+                    if clean_w in homophones:
+                        rep = homophones[clean_w]
+                        idx = w.lower().find(clean_w)
+                        prefix = w[:idx]
+                        suffix = w[idx + len(clean_w):]
+                        new_words.append(prefix + rep + suffix)
+                    else:
+                        new_words.append(w)
+                q = " ".join(new_words)
+                import re as _re
+                q = _re.sub(r"[.,\/#!$%\^&\*;:{}=\-_`~()?]", "", q)
+                working_payload[self.request_key] = q.lower()
+
+            elif chaos_profile == "voice_filler_words":
+                # Injects speech disfluencies (um, uh, like, you know) into the query.
+                q = working_payload[self.request_key]
+                words = q.split()
+                if len(words) > 3:
+                    words.insert(0, "uh,")
+                    words.insert(1, "um,")
+                    mid = len(words) // 2
+                    words.insert(mid, "like,")
+                    words.insert(mid + 2, "you know,")
+                    words.append(", right?")
+                else:
+                    words = ["um,", "like,"] + words + [", you know?"]
+                working_payload[self.request_key] = " ".join(words)
+
+            elif chaos_profile == "voice_background_noise_sim":
+                # Injects ambient noise indicators to simulate a phone call from a noisy room.
+                q = working_payload[self.request_key]
+                working_payload[self.request_key] = (
+                    "[background chatter] " + q.replace(" ", " [static] ", 1) + " [dog barking] [cough]"
+                )
+
+            elif chaos_profile == "voice_truncated_speech":
+                # Cuts the query off mid-sentence to simulate speech timeout or early user hang-up.
+                q = working_payload[self.request_key]
+                words = q.split()
+                if len(words) > 4:
+                    cutoff = max(len(words) // 2, 3)
+                    truncated = " ".join(words[:cutoff])
+                else:
+                    truncated = q[:len(q)//2]
+                working_payload[self.request_key] = truncated + "... [audio cut off / silence]"
+
+            elif chaos_profile == "voice_dialect_shift":
+                # Simulates phonetic dialectal/casual shifts (yeah, wanna, gonna, y'all, lemme).
+                q = working_payload[self.request_key]
+                replacements = {
+                    "yes": "yeah",
+                    "want to": "wanna",
+                    "going to": "gonna",
+                    "you all": "y'all",
+                    "let me": "lemme",
+                    "give me": "gimme",
+                    "ok": "uh-huh",
+                }
+                for word, rep in replacements.items():
+                    q = q.replace(word, rep)
+                    q = q.replace(word.capitalize(), rep.capitalize())
+                working_payload[self.request_key] = q
+
         async with httpx.AsyncClient(timeout=60.0) as client:
             try:
                 response = await client.post(
