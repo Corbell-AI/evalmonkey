@@ -101,3 +101,43 @@ def print_history_trends(scenario_name: str, history: list, production_reliabili
     rel_color = "green" if production_reliability > 80 else "yellow" if production_reliability > 60 else "red"
     console.print(f"\n🚀 [bold white]Production Reliability Metric:[/bold white] [bold {rel_color}]{production_reliability:.1f} / 100.0[/bold {rel_color}]")
     console.print("[dim](Calculated as 60% of most recent baseline capability + 40% most recent chaos resilience)[/dim]\n")
+
+
+def print_regression_warning(scenario: str, prev_score: int, curr_score: int, drop: int) -> None:
+    """Prints a loud red regression-detected panel to the terminal."""
+    content = Text()
+    content.append(f"Scenario: {scenario}\n", style="bold white")
+    content.append(f"Previous Score: {prev_score}  →  Current Score: {curr_score}  ", style="white")
+    content.append(f"(drop: {drop} pts)\n", style="bold red")
+    content.append("\nYour agent's baseline score regressed versus the last run.", style="dim yellow")
+    content.append(f"\n\nDebug:  evalmonkey history --scenario {scenario}", style="dim")
+    content.append(f"\nFix:    evalmonkey generate-evals --traces-file <output-dir>/traces.json", style="dim")
+    panel = Panel(
+        content,
+        title="[bold red]⚠️  REGRESSION DETECTED[/bold red]",
+        border_style="red",
+        expand=False,
+        padding=(1, 2),
+    )
+    console.print("\n")
+    console.print(Align.center(panel))
+
+
+def print_recommend_suite(agent_type: str, benchmarks: dict, categories: dict) -> None:
+    """Prints a curated benchmark recommendation table for the given agent_type."""
+    console.print(f"\n[bold cyan]🐵 EvalMonkey — Recommended Benchmarks for: [bold white]{agent_type}[/bold white][/bold cyan]")
+    console.print(f"[dim]Based on agent_type in your evalmonkey.yaml. Run 'evalmonkey list-benchmarks' to see all.[/dim]\n")
+
+    table = Table(box=box.SIMPLE, show_header=True, header_style="bold magenta")
+    table.add_column("Scenario ID", style="bold white")
+    table.add_column("Category", style="cyan")
+    table.add_column("Description")
+
+    for b_id, desc in benchmarks.items():
+        table.add_row(b_id, categories.get(b_id, ""), desc)
+
+    console.print(table)
+    console.print(
+        "\n[dim]Run: evalmonkey run-benchmark --scenario <id> --target-url <url>[/dim]"
+        "\n[dim]Run all: evalmonkey run-benchmark --scenario <id> for each scenario above[/dim]\n"
+    )
