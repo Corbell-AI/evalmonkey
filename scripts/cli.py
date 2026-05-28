@@ -15,11 +15,13 @@ from evalmonkey.reporting.markdown import (
     print_banner, 
     print_benchmark_score, 
     print_chaos_result,
-    print_history_trends
+    print_history_trends,
+    print_regression_warning,
+    print_recommend_suite,
 )
-from evalmonkey.scenarios.standard_benchmarks import load_standard_benchmark, get_supported_benchmarks, get_benchmarks_by_category
-from evalmonkey.reporting.history import record_run, get_history, calculate_production_reliability
-from evalmonkey.config.agent_config import load_config, generate_config_yaml, FRAMEWORK_PRESETS
+from evalmonkey.scenarios.standard_benchmarks import load_standard_benchmark, get_supported_benchmarks, get_benchmarks_by_category, get_benchmark_categories
+from evalmonkey.reporting.history import record_run, get_history, calculate_production_reliability, detect_regression
+from evalmonkey.config.agent_config import load_config, generate_config_yaml, FRAMEWORK_PRESETS, AGENT_TYPE_BENCHMARKS
 
 app = typer.Typer(help="EvalMonkey: Open-source Agent Benchmarking and Chaos Framework")
 console = Console()
@@ -170,6 +172,7 @@ def _spawn_sample_agent(sample_agent: str):
 @app.command()
 def run_benchmark(
     scenario: str = typer.Option(..., help="Scenario ID, standard benchmark (e.g. gsm8k), or custom_eval ID"),
+    dataset: str = typer.Option(None, help="Path to a local dataset file (.jsonl, .json, .csv) to use as the benchmark source."),
     target_url: str = typer.Option(None, help="Address of the BYO agent API (e.g. http://localhost:8000). Required unless using --sample-agent."),
     sample_agent: str = typer.Option(None, help="Automatically spawn a sample agent in the background (rag_app or research_agent)"),
     eval_file: str = typer.Option("custom_evals.yaml", help="Path to evaluation assets"),
@@ -220,6 +223,16 @@ def run_benchmark(
     if standard_evals:
         console.print(f"[bold cyan]=> Loaded {len(standard_evals)} samples from standard benchmark subset: {scenario}[/bold cyan]")
         evals_to_run = standard_evals
+    elif dataset:
+        # --dataset flag: load from a local file directly
+        from evalmonkey.scenarios.private_benchmarks import LocalFileLoader
+        console.print(f"[bold cyan]=> Loading dataset from local file: {dataset}[/bold cyan]")
+        loader = LocalFileLoader(dataset)
+        evals_to_run = loader.load(limit=limit)
+        if not evals_to_run:
+            console.print(f"[bold red]No eval rows found in {dataset}. Check the file format (JSONL/JSON/CSV).[/bold red]")
+            if agent_process: agent_process.terminate()
+            return
     else:
         console.print(f"[bold cyan]=> Loading local BYO eval assets from {eval_file}[/bold cyan]")
         evals = load_local_evals(eval_file)
@@ -276,6 +289,18 @@ def run_benchmark(
         
         record_run(scenario, "baseline", final_score, details={"reasoning": overall_reasoning, "sample_size": len(scores)})
         print_benchmark_score(scenario, final_score, overall_reasoning, baseline)
+
+        # ── Regression detection (informational — use `evalmonkey guard` for CI gating) ──
+        import os as _os
+        _threshold = int(_os.getenv("EVAL_REGRESSION_THRESHOLD", "5"))
+        regression = detect_regression(scenario, final_score, threshold=_threshold)
+        if regression:
+            print_regression_warning(
+                scenario=scenario,
+                prev_score=regression["prev_score"],
+                curr_score=final_score,
+                drop=regression["drop"],
+            )
 
         # ── Eval Asset Generation on failure ──────────────────────────────
         if asset_gen.has_failures:
@@ -426,6 +451,118 @@ def history(scenario: str = typer.Option(None, help="Specific scenario ID to vie
         s_hist = [h for h in hist if h["scenario"] == s]
         reliability = calculate_production_reliability(scenario=s)
         print_history_trends(s, s_hist, reliability)
+
+
+@app.command()
+def recommend():
+    """
+    Show the recommended benchmark suite for your agent type.
+    Reads agent_type from evalmonkey.yaml (default: general).
+    Set agent_type in your config to get a curated list instead of all 22 benchmarks.
+    """
+    print_banner()
+    cfg = load_config()
+    agent_type = getattr(cfg, "agent_type", "general") if cfg else "general"
+
+    benchmark_ids = AGENT_TYPE_BENCHMARKS.get(agent_type, AGENT_TYPE_BENCHMARKS["general"])
+    all_benchmarks = get_supported_benchmarks()
+    categories = get_benchmark_categories()
+
+    # Keep only IDs that exist in the catalogue (guard against stale config values)
+    relevant = {bid: all_benchmarks[bid] for bid in benchmark_ids if bid in all_benchmarks}
+
+    if not relevant:
+        console.print(
+            f"[bold yellow]No benchmarks found for agent_type '{agent_type}'. "
+            f"Available types: {', '.join(AGENT_TYPE_BENCHMARKS.keys())}[/bold yellow]"
+        )
+        return
+
+    print_recommend_suite(agent_type, relevant, categories)
+
+
+@app.command()
+def guard(
+    scenario: str = typer.Option(..., help="Benchmark scenario to check for regression"),
+    fail_threshold: int = typer.Option(
+        None,
+        help="Score drop (pts) that triggers failure. Defaults to EVAL_REGRESSION_THRESHOLD env var (default: 5).",
+    ),
+):
+    """
+    Check for a score regression vs the last baseline and exit with code 1 if detected.
+    Use this in CI/CD pipelines to block deploys when your agent regresses.
+
+    Example (GitHub Actions):
+      - run: evalmonkey guard --scenario gsm8k
+    """
+    import os as _os
+    threshold = fail_threshold if fail_threshold is not None else int(_os.getenv("EVAL_REGRESSION_THRESHOLD", "5"))
+
+    hist = get_history(scenario)
+    baselines = sorted(
+        [r for r in hist if r.get("run_type") == "baseline"],
+        key=lambda r: r.get("timestamp", ""),
+    )
+
+    if len(baselines) < 2:
+        console.print(
+            f"[dim]Not enough baseline history for '{scenario}' to detect regression "
+            f"(need ≥ 2 runs). Run evalmonkey run-benchmark --scenario {scenario} at least twice.[/dim]"
+        )
+        raise SystemExit(0)
+
+    curr_score = baselines[-1].get("score", 0)
+    prev_score = baselines[-2].get("score", 0)
+    drop = prev_score - curr_score
+
+    if drop >= threshold:
+        print_regression_warning(scenario, prev_score, curr_score, drop)
+        console.print(
+            f"\n[bold red]❌ Guard failed: {scenario} regressed by {drop} pts "
+            f"(threshold: {threshold}). Exiting with code 1.[/bold red]\n"
+        )
+        raise SystemExit(1)
+    else:
+        trend = f"+{abs(drop)}" if drop < 0 else f"±0" if drop == 0 else f"-{drop}"
+        color = "green" if drop <= 0 else "yellow"
+        console.print(
+            f"\n[bold {color}]✅ Guard passed: {scenario} — "
+            f"score {curr_score}/100 (vs prev {prev_score}/100, Δ {trend}). "
+            f"No regression detected.[/bold {color}]\n"
+        )
+        raise SystemExit(0)
+
+
+@app.command()
+def report(
+    output: str = typer.Option("evalmonkey_report.md", help="Output Markdown file path"),
+    agent_name: str = typer.Option(
+        None,
+        help="Agent display name for the report title. Defaults to name in evalmonkey.yaml.",
+    ),
+):
+    """
+    Generate a shareable Markdown Agent Card from your local benchmark history.
+    Includes a shields.io badge, per-scenario score table, and production reliability.
+
+    Paste the badge into your README to show your agent's benchmark scores!
+    """
+    from evalmonkey.reporting.report_generator import generate_report
+
+    cfg = load_config()
+    name = agent_name or (cfg.name if cfg else "My Agent")
+
+    hist = get_history()
+    if not hist:
+        console.print("[bold yellow]No benchmark history found. Run evalmonkey run-benchmark first![/bold yellow]")
+        return
+
+    generate_report(output_path=output, agent_name=name)
+    console.print(f"\n[bold green]✅ Agent card generated: {output}[/bold green]")
+    console.print(f"[dim]Embed the badge in your README, share the file, or commit it to your repo.[/dim]")
+    console.print(f"[bold cyan]   cat {output}[/bold cyan]\n")
+
 
 @app.command()
 def run_chaos_suite(

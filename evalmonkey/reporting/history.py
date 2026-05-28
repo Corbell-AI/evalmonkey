@@ -39,6 +39,33 @@ def get_history(scenario: str = None) -> list:
         history = [h for h in history if h.get("scenario") == scenario]
     return history
 
+def detect_regression(scenario: str, current_score: int, threshold: int = 5) -> dict | None:
+    """
+    Compares the current baseline score against the previous baseline run for the same scenario.
+    Returns a dict with regression details if score dropped by >= threshold points, otherwise None.
+
+    Note: call this *after* record_run() has already saved the current score, so the history
+    contains at least two baselines — we compare [-1] (current) against [-2] (previous).
+    """
+    records = get_history(scenario=scenario)
+    baselines = [r for r in records if r.get("run_type") == "baseline"]
+    # Sort ascending by timestamp to ensure correct ordering
+    baselines_sorted = sorted(baselines, key=lambda r: r.get("timestamp", ""))
+    if len(baselines_sorted) < 2:
+        return None  # Not enough history to compare
+    prev_score = baselines_sorted[-2].get("score", 0)
+    drop = prev_score - current_score
+    if drop >= threshold:
+        return {
+            "scenario": scenario,
+            "prev_score": prev_score,
+            "current_score": current_score,
+            "drop": drop,
+            "threshold": threshold,
+        }
+    return None
+
+
 def calculate_production_reliability(scenario: str = None) -> float:
     """
     Calculates the 'Production Reliability' metric.
