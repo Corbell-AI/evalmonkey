@@ -74,6 +74,18 @@ FRAMEWORK_PRESETS = {
     },
 }
 
+# Maps each agent_type to the most relevant standard benchmark IDs.
+# Used by `evalmonkey recommend` to surface a curated suite instead of all 22.
+AGENT_TYPE_BENCHMARKS: dict[str, list[str]] = {
+    "research_agent":    ["hotpotqa", "drop", "natural-questions", "gaia-benchmark"],
+    "coding_agent":      ["human-eval", "mbpp", "apps", "swe-bench"],
+    "rag_agent":         ["hotpotqa", "natural-questions", "drop", "truthfulqa"],
+    "customer_support":  ["daily-dialog", "multiwoz", "mt-bench", "alpacaeval"],
+    "voice_agent":       ["daily-dialog", "multiwoz", "spokentext-cleanup"],
+    "safety_agent":      ["truthfulqa", "toxigen", "arc", "bbh"],
+    "general":           ["gsm8k", "mmlu", "arc", "truthfulqa"],
+}
+
 
 @dataclass
 class AgentConfig:
@@ -86,6 +98,8 @@ class AgentConfig:
     eval_model: str = ""
     agent_command: str = ""         # shell command to start the agent server
     agent_startup_wait: int = 3     # seconds to wait after spawning before sending traffic
+    agent_type: str = "general"     # Used by `evalmonkey recommend` to surface relevant benchmarks
+    private_benchmarks: list = field(default_factory=list)  # Custom REST dataset configs
     extra: dict = field(default_factory=dict)
 
 
@@ -116,6 +130,8 @@ def load_config(config_path: Optional[str] = None) -> Optional[AgentConfig]:
                 eval_model=str(raw.get("eval_model", os.getenv("EVAL_MODEL", ""))),
                 agent_command=str(agent_raw.get("agent_command", "")),
                 agent_startup_wait=int(agent_raw.get("agent_startup_wait", 3)),
+                agent_type=str(agent_raw.get("agent_type", "general")),
+                private_benchmarks=list(raw.get("private_benchmarks", [])),
                 extra=raw,
             )
     return None
@@ -153,6 +169,10 @@ agent:
 
   # How EvalMonkey reads the answer back (dot-notation for nested fields)
   response_path: {preset['response_path']}   # dot-path to extract the answer text
+
+  # Agent type — drives `evalmonkey recommend` to show only relevant benchmarks
+  # Options: general | research_agent | coding_agent | rag_agent | customer_support | voice_agent | safety_agent
+  agent_type: general
 
 # Which LLM EvalMonkey uses as the judge (can also be set via EVAL_MODEL env var)
 eval_model: "gpt-4o"   # or: anthropic.claude-3-haiku-20240307-v1:0, ollama/llama3, etc.

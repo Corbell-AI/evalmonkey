@@ -128,7 +128,19 @@ def load_standard_benchmark(benchmark_name: str, limit: int = 5) -> List[EvalSce
     """
     Adapter for well-known standard agent benchmarks from HuggingFace Datasets.
     Automatically downloads datasets and converts them to standard HTTP scenarios!
+
+    Also handles private/external dataset prefixes:
+        hf::<org/dataset>           → any HuggingFace dataset (direct load)
+        confident-ai::<dataset_id>  → Confident AI (DeepEval) dataset
+        braintrust::<ref>           → Braintrust dataset
+        langsmith::<dataset_id>     → LangSmith dataset
     """
+    # ── Private / external dataset routing ───────────────────────────────────
+    PRIVATE_PREFIXES = ("hf::", "confident-ai::", "braintrust::", "langsmith::")
+    if any(benchmark_name.startswith(p) for p in PRIVATE_PREFIXES):
+        from evalmonkey.scenarios.private_benchmarks import load_private_benchmark
+        return load_private_benchmark(benchmark_name, limit=limit)
+
     try:
         import os
         # Prevent PyTorch shared-memory multiprocessing on Mac.
