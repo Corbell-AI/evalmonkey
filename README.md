@@ -10,7 +10,15 @@
   <a href="http://makeapullrequest.com"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
   <a href="https://github.com/Corbell-AI/evalmonkey/actions"><img src="https://img.shields.io/github/actions/workflow/status/Corbell-AI/evalmonkey/python-app.yml?branch=main" alt="Build Status"></a>
 </p>
+
 <p align="center">
+  <strong>🏆 Benchmarked agents earn shareable badges like these:</strong><br><br>
+  <a href="https://github.com/Corbell-AI/evalmonkey"><img src="https://img.shields.io/badge/EvalMonkey-Score%3A73-yellow" alt="EvalMonkey Score"></a>
+  <a href="https://github.com/Corbell-AI/evalmonkey"><img src="https://img.shields.io/badge/Production%20Reliability-Score%3A67-yellow" alt="Production Reliability"></a>
+  <a href="https://github.com/Corbell-AI/evalmonkey"><img src="https://img.shields.io/badge/EvalMonkey-Chaos%20Resilient-brightgreen" alt="Chaos Resilient"></a>
+  <br><sub>Run <code>evalmonkey report --output agent_card.md</code> to generate your agent's card &amp; badge</sub>
+</p>
+
   <b>Agent Benchmarking & Chaos Engineering Framework</b><br>
   <i>"Don't just trust your agent. Prove it works. Then break it."</i>
 </p>
