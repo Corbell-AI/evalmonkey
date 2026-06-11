@@ -5,6 +5,12 @@
 # EvalMonkey
 
 <p align="center">
+  <a href="https://opensource.org/licenses/Apache-2.0"><img src="https://img.shields.io/badge/License-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://www.python.org/downloads/"><img src="https://img.shields.io/badge/python-3.11+-blue.svg" alt="Python Version"></a>
+  <a href="http://makeapullrequest.com"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
+  <a href="https://github.com/Corbell-AI/evalmonkey/actions"><img src="https://img.shields.io/github/actions/workflow/status/Corbell-AI/evalmonkey/python-app.yml?branch=main" alt="Build Status"></a>
+</p>
+<p align="center">
   <b>Agent Benchmarking & Chaos Engineering Framework</b><br>
   <i>"Don't just trust your agent. Prove it works. Then break it."</i>
 </p>
